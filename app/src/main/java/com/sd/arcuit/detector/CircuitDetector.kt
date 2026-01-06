@@ -35,8 +35,8 @@ class CircuitDetector(context: Context) {
 
     fun detect(bitmap: Bitmap): List<Detection> {
 
-        val resizedBitmap =
-            Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
+        val lb = letterbox(bitmap, inputSize)
+        val resizedBitmap = lb.bitmap
 
         val inputBuffer =
             ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4)
@@ -73,13 +73,24 @@ class CircuitDetector(context: Context) {
                 }
             }
 
-            if (bestScore < confidenceThreshold) continue
+            val minConf =
+                if (labels[bestClass].endsWith("_pin")) 0.15f else confidenceThreshold
+
+            if (bestScore < minConf) continue
+
             if (bestClass == -1) continue
 
             val cx = output[0][0][i] * inputSize
             val cy = output[0][1][i] * inputSize
             val w  = output[0][2][i] * inputSize
             val h  = output[0][3][i] * inputSize
+
+            val x = (cx - lb.padX) / lb.scale
+            val y = (cy - lb.padY) / lb.scale
+            val bw = w / lb.scale
+            val bh = h / lb.scale
+
+            Log.d("BOX_DEBUG", "cx=$cx cy=$cy w=$w h=$h score=$bestScore")
 
             val label =
                 if (bestClass < labels.size) labels[bestClass] else "unknown"
@@ -89,10 +100,10 @@ class CircuitDetector(context: Context) {
                     label = label,
                     confidence = bestScore,
                     boundingBox = RectF(
-                        cx - w / 2,
-                        cy - h / 2,
-                        cx + w / 2,
-                        cy + h / 2
+                        x - bw / 2,
+                        y - bh / 2,
+                        x + bw / 2,
+                        y + bh / 2
                     )
                 )
             )
@@ -123,28 +134,68 @@ class CircuitDetector(context: Context) {
         return interArea / (areaA + areaB - interArea + 1e-6f)
     }
 
+    private fun area(r: RectF): Float {
+        return maxOf(0f, r.width()) * maxOf(0f, r.height())
+    }
+
+    private val noNmsClasses = setOf(
+        "vcc_pin",
+        "gnd_pin",
+        "wire_endpoint"
+    )
+
     private fun nonMaxSuppression(
-        detections: List<Detection>,
-        iouThreshold: Float = 0.45f
+        detections: List<Detection>
     ): List<Detection> {
 
-        val sorted = detections.sortedByDescending { it.confidence }
         val result = mutableListOf<Detection>()
+        val sorted = detections.sortedByDescending { it.confidence }
 
         for (det in sorted) {
+
+            // 🔥 Do NOT suppress these classes
+            if (det.label in noNmsClasses) {
+                result.add(det)
+                continue
+            }
+
             var keep = true
+            val detArea = area(det.boundingBox)
+
             for (picked in result) {
-                if (det.label == picked.label &&
-                    iou(det.boundingBox, picked.boundingBox) > iouThreshold
-                ) {
-                    keep = false
-                    break
+
+                if (det.label != picked.label) continue
+
+                val pickedArea = area(picked.boundingBox)
+                val iouVal = iou(det.boundingBox, picked.boundingBox)
+
+                val isSmall = detArea < 32f * 32f
+                val isPickedSmall = pickedArea < 32f * 32f
+
+                if (isSmall && isPickedSmall) {
+                    if (iouVal > 0.75f) {
+                        keep = false
+                        break
+                    }
+                }
+                else if (isSmall && !isPickedSmall) {
+                    continue
+                }
+                else {
+                    if (iouVal > 0.45f) {
+                        keep = false
+                        break
+                    }
                 }
             }
+
             if (keep) result.add(det)
         }
+
         return result
     }
+
+
 
 
 }

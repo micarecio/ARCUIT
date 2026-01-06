@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -16,19 +15,27 @@ class OverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val boxPaint = Paint().apply {
-        color = Color.GREEN
         style = Paint.Style.STROKE
         strokeWidth = 6f
     }
 
-    private val textPaint = Paint().apply {
-        color = Color.GREEN
-        textSize = 40f
-        style = Paint.Style.FILL
+    private val detectionTextPaint = Paint().apply {
+        textSize = 36f
+        color = Color.WHITE
+        isAntiAlias = true
+    }
+
+    private val gateTextPaint = Paint().apply {
+        textSize = 42f
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+        isAntiAlias = true
     }
 
     private var boxes: List<BoundingBox> = emptyList()
     private var icBodies: List<ICComponent> = emptyList()
+    private var icLabels: Map<String, String> = emptyMap()
 
     var listener: ICClickListener? = null
 
@@ -42,39 +49,55 @@ class OverlayView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setICLabels(labels: Map<String, String>) {
+        icLabels = labels
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Draw bounding boxes
         for (box in boxes) {
-            canvas.drawRect(box.left, box.top, box.right, box.bottom, boxPaint)
-            canvas.drawText(box.label, box.left, box.top - 10, textPaint)
-        }
+            boxPaint.color = box.color
 
-        // Draw gate labels
-        for (ic in icBodies) {
-            ic.gateType?.let {
+            if (box.label.endsWith("_endpoint")) {
+                val cx = (box.left + box.right) / 2f
+                val cy = (box.top + box.bottom) / 2f
+                canvas.drawCircle(cx, cy, 12f, boxPaint)
+                continue
+            }
+
+            canvas.drawRect(box.left, box.top, box.right, box.bottom, boxPaint)
+
+            if (box.label != "ic_body") {
                 canvas.drawText(
-                    it.name,
-                    ic.boundingBox.left,
-                    ic.boundingBox.top - 20,
-                    textPaint
+                    box.label,
+                    box.left + 6f,
+                    box.top - 10f,
+                    detectionTextPaint
                 )
             }
+        }
+
+        // 🔒 Frozen IC labels (centered)
+        for (ic in icBodies) {
+            val label = icLabels[ic.id] ?: continue
+
+            val cx = ic.boundingBox.centerX()
+            val cy = ic.boundingBox.centerY()
+            val offset = (gateTextPaint.descent() + gateTextPaint.ascent()) / 2f
+
+            canvas.drawText(label, cx, cy - offset, gateTextPaint)
         }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_DOWN) {
-            val x = event.x
-            val y = event.y
-
-            val tappedIC = icBodies.find {
-                it.boundingBox.contains(x, y)
-            }
-
-            if (tappedIC != null) {
-                listener?.onICClicked(tappedIC)
+            icBodies.firstOrNull {
+                it.id !in icLabels.keys &&
+                        it.boundingBox.contains(event.x, event.y)
+            }?.let {
+                listener?.onICClicked(it)
                 return true
             }
         }
