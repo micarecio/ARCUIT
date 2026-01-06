@@ -64,14 +64,6 @@ class MainActivity : AppCompatActivity() {
 
         overlayView.setICBodies(icComponents)
 
-        overlayView.setBoxes(
-            listOf(
-                BoundingBox(200f, 300f, 600f, 700f, "ic_body"),
-                BoundingBox(650f, 400f, 700f, 450f, "wire_endpoint"),
-                BoundingBox(150f, 800f, 250f, 900f, "led")
-            )
-        )
-
         val testObjects = listOf(
             DetectedObject(
                 id = "w1",
@@ -125,12 +117,28 @@ class MainActivity : AppCompatActivity() {
                 val bitmap = imageProxy.toBitmap()
                 val detections = circuitDetector.detect(bitmap)
 
-                Log.d(
-                    "ARCUIT_ML",
-                    "Detections: ${detections.size}"
-                )
+                val overlayView = findViewById<OverlayView>(R.id.overlayView)
+
+// Map model boxes (640x640) → PreviewView size
+                val scaleX = overlayView.width / 640f
+                val scaleY = overlayView.height / 640f
+
+                val boxes = detections.map {
+                    BoundingBox(
+                        left = it.boundingBox.left * scaleX,
+                        top = it.boundingBox.top * scaleY,
+                        right = it.boundingBox.right * scaleX,
+                        bottom = it.boundingBox.bottom * scaleY,
+                        label = it.label
+                    )
+                }
+
+                overlayView.setBoxes(boxes)
+
+                Log.d("ARCUIT_ML", "Boxes drawn: ${boxes.size}")
 
                 imageProxy.close()
+
             }
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
