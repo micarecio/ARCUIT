@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.sd.arcuit.detector.CircuitDetector
 import com.sd.arcuit.logic.ICComponent
 import com.sd.arcuit.util.toBitmap
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
@@ -27,6 +28,9 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
     private val icMap = mutableMapOf<String, ICComponent>()
     private val icLabels = mutableMapOf<String, String>()
+
+    private val analysisExecutor = Executors.newSingleThreadExecutor()
+    private var lastAnalyzedTime = 0L
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -69,7 +73,14 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
 
-            analysis.setAnalyzer(ContextCompat.getMainExecutor(this)) { imageProxy ->
+            analysis.setAnalyzer(analysisExecutor) { imageProxy ->
+
+                val now = System.currentTimeMillis()
+                if (now - lastAnalyzedTime < 100) {
+                    imageProxy.close()
+                    return@setAnalyzer
+                }
+                lastAnalyzedTime = now
 
                 val fullBitmap = imageProxy.toBitmap()
                 val crop = imageProxy.cropRect
@@ -107,7 +118,6 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 val icBodies = mutableListOf<ICComponent>()
 
                 rawBoxes.forEach { box ->
-
                     if (box.label != "ic_body") {
                         finalBoxes.add(box)
                         return@forEach
@@ -115,10 +125,8 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                     val boxRect = box.toRectF()
 
-                    // 🔒 If overlaps frozen IC → ignore detector box
-                    val frozenIC = icMap.values.firstOrNull { ic ->
-                        ic.id in icLabels &&
-                                RectF.intersects(ic.boundingBox, boxRect)
+                    val frozenIC = icMap.values.firstOrNull {
+                        it.id in icLabels && RectF.intersects(it.boundingBox, boxRect)
                     }
 
                     if (frozenIC != null) {
@@ -126,10 +134,8 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                         return@forEach
                     }
 
-                    // 🔹 Match unfrozen IC
-                    val matched = icMap.values.firstOrNull { ic ->
-                        ic.id !in icLabels &&
-                                RectF.intersects(ic.boundingBox, boxRect)
+                    val matched = icMap.values.firstOrNull {
+                        it.id !in icLabels && RectF.intersects(it.boundingBox, boxRect)
                     }
 
                     val ic = if (matched != null) {
@@ -137,16 +143,13 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                         matched
                     } else {
                         val id = "IC_${System.nanoTime()}"
-                        ICComponent(id, RectF(boxRect)).also {
-                            icMap[id] = it
-                        }
+                        ICComponent(id, RectF(boxRect)).also { icMap[id] = it }
                     }
 
                     icBodies.add(ic)
                     finalBoxes.add(box)
                 }
 
-                // 🔒 Draw frozen IC boxes from stored geometry
                 icMap.values
                     .filter { it.id in icLabels }
                     .forEach { frozen ->
@@ -160,14 +163,10 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                                 colorForLabel("ic_body")
                             )
                         )
-                        if (!icBodies.contains(frozen)) {
-                            icBodies.add(frozen)
-                        }
+                        if (!icBodies.contains(frozen)) icBodies.add(frozen)
                     }
 
-                overlayView.setBoxes(finalBoxes)
-                overlayView.setICBodies(icBodies)
-                overlayView.setICLabels(icLabels)
+                overlayView.update(finalBoxes, icBodies, icLabels)
 
                 imageProxy.close()
             }
@@ -188,8 +187,21 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         camera?.cameraControl?.enableTorch(torchEnabled)
     }
 
-    // ❄️ Freeze IC EXACT SIZE at labeling time
     override fun onICClicked(ic: ICComponent) {
+
+        if (ic.id in icLabels) {
+            AlertDialog.Builder(this)
+                .setTitle("Remove Gate?")
+                .setMessage("Remove assigned gate from this IC?")
+                .setPositiveButton("Remove") { _, _ ->
+                    icLabels.remove(ic.id)
+                    overlayView.postInvalidateOnAnimation()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
         val gates = arrayOf(
             "AND", "OR", "NOT",
             "NAND", "NOR", "XOR", "XNOR"
@@ -199,7 +211,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
             .setTitle("Select IC Type")
             .setItems(gates) { _, which ->
                 icLabels[ic.id] = gates[which]
-                overlayView.invalidate()
+                overlayView.postInvalidateOnAnimation()
             }
             .show()
     }

@@ -54,6 +54,8 @@ dependencies {
     // Vision helpers (optional but recommended)
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
 
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

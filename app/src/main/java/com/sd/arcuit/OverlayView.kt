@@ -39,19 +39,15 @@ class OverlayView @JvmOverloads constructor(
 
     var listener: ICClickListener? = null
 
-    fun setBoxes(newBoxes: List<BoundingBox>) {
+    fun update(
+        newBoxes: List<BoundingBox>,
+        newICs: List<ICComponent>,
+        labels: Map<String, String>
+    ) {
         boxes = newBoxes
-        invalidate()
-    }
-
-    fun setICBodies(newICs: List<ICComponent>) {
         icBodies = newICs
-        invalidate()
-    }
-
-    fun setICLabels(labels: Map<String, String>) {
         icLabels = labels
-        invalidate()
+        postInvalidateOnAnimation()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -79,7 +75,6 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
-        // 🔒 Frozen IC labels (centered)
         for (ic in icBodies) {
             val label = icLabels[ic.id] ?: continue
 
@@ -94,8 +89,7 @@ class OverlayView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_DOWN) {
             icBodies.firstOrNull {
-                it.id !in icLabels.keys &&
-                        it.boundingBox.contains(event.x, event.y)
+                it.boundingBox.contains(event.x, event.y)
             }?.let {
                 listener?.onICClicked(it)
                 return true
