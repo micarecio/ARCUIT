@@ -19,8 +19,10 @@ fun colorForLabel(label: String): Int {
         "ic_body" -> Color.BLUE
         "led" -> Color.CYAN
         "wire_endpoint" -> Color.YELLOW
-        "vcc_pin" -> Color.RED
-        "gnd_pin" -> Color.BLACK
+        "pos_rail" -> Color.RED
+        "neg_rail" -> Color.BLACK
+        "switch" -> Color.GREEN
+        "push_button" -> Color.DKGRAY
         else -> Color.MAGENTA
     }
 }

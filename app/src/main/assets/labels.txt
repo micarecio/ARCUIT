@@ -1,6 +1,8 @@
-gnd_pin
 ic_body
-ic_notch
 led
-vcc_pin
+neg_rail
+pos_rail
+push_button
+resistor
+switch
 wire_endpoint

@@ -7,12 +7,30 @@ enum class ObjectType {
     WIRE_ENDPOINT,
     LED,
     RESISTOR,
+    PUSH_BUTTON,
+    SWITCH,
     VCC,
-    GND
+    GND;
+
+    companion object {
+        fun fromLabel(label: String): ObjectType {
+            return when (label) {
+                "ic_body" -> IC_BODY
+                "wire_endpoint" -> WIRE_ENDPOINT
+                "led" -> LED
+                "resistor" -> RESISTOR
+                "push_button" -> PUSH_BUTTON
+                "switch" -> SWITCH
+                "pos_rail" -> VCC
+                "neg_rail" -> GND
+                else -> WIRE_ENDPOINT
+            }
+        }
+    }
 }
 
 data class DetectedObject(
-    val id: String,               // unique ID (UUID or incremental)
+    val id: String,
     val type: ObjectType,
     val left: Float,
     val top: Float,
@@ -20,8 +38,24 @@ data class DetectedObject(
     val bottom: Float
 )
 
-data class ICComponent(
-    val id: String,
-    val boundingBox: RectF,
-    var gateType: GateType? = null
+enum class PinRole {
+    INPUT,
+    OUTPUT,
+    VCC,
+    GND,
+    UNKNOWN
+}
+
+data class ICPin(
+    val index: Int,
+    val role: PinRole,
+    val point: ConnectionPoint
 )
+
+class ICComponent(
+    val id: String,
+    val boundingBox: RectF
+) {
+    val pins = mutableListOf<ICPin>()
+    var type: String? = null
+}

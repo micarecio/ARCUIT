@@ -9,76 +9,76 @@ import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.exp
 
 class CircuitDetector(context: Context) {
 
     private val interpreter: Interpreter
-    private val labels: List<String>
+    private val labels = listOf(
+        "ic_body",
+        "led",
+        "neg_rail",
+        "pos_rail",
+        "push_button",
+        "resistor",
+        "switch",
+        "wire_endpoint"
+    )
 
     private val inputSize = 640
-    private val confidenceThreshold = 0.25f
+    private val confThreshold = 0.25f
 
     init {
         interpreter = Interpreter(
             FileUtil.loadMappedFile(context, "arcuit.tflite")
         )
-        labels = FileUtil.loadLabels(context, "labels.txt")
-
-        val outShape = interpreter.getOutputTensor(0).shape()
-        Log.d("ARCUIT_DEBUG", "Model output shape = ${outShape.contentToString()}")
-    }
-
-    private fun sigmoid(x: Float): Float {
-        return 1f / (1f + exp(-x))
+        Log.d("ARCUIT_DEBUG",
+            "Output shape=${interpreter.getOutputTensor(0).shape().contentToString()}")
     }
 
     fun detect(bitmap: Bitmap): List<Detection> {
 
         val lb = letterbox(bitmap, inputSize)
-        val resizedBitmap = lb.bitmap
+        val img = lb.bitmap
 
-        val inputBuffer =
-            ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4)
+        val input =
+            ByteBuffer.allocateDirect(1 * 3 * inputSize * inputSize * 4)
                 .order(ByteOrder.nativeOrder())
 
         for (y in 0 until inputSize) {
             for (x in 0 until inputSize) {
-                val pixel = resizedBitmap.getPixel(x, y)
-                inputBuffer.putFloat(((pixel shr 16) and 0xFF) / 255f)
-                inputBuffer.putFloat(((pixel shr 8) and 0xFF) / 255f)
-                inputBuffer.putFloat((pixel and 0xFF) / 255f)
+                val px = img.getPixel(x, y)
+
+                input.putFloat(((px shr 16) and 0xFF) / 255f) // R
+                input.putFloat(((px shr 8) and 0xFF) / 255f)  // G
+                input.putFloat((px and 0xFF) / 255f)          // B
             }
         }
 
-        // YOLOv8 output tensor
-        val output = Array(1) { Array(10) { FloatArray(8400) } }
-        interpreter.run(inputBuffer, output)
 
-        val detections = mutableListOf<Detection>()
+        val output = Array(1) { Array(12) { FloatArray(8400) } }
+        interpreter.run(input, output)
 
-        val numClasses = output[0].size - 4   // YOLOv8: classes start at index 4
-        val numBoxes = 8400
+        val results = mutableListOf<Detection>()
 
-        for (i in 0 until numBoxes) {
+        for (i in 0 until 8400) {
 
             var bestScore = 0f
             var bestClass = -1
 
-            for (c in 0 until numClasses) {
-                val score = output[0][4 + c][i]   // ❗ NO SIGMOID
+            for (c in 0 until 8) {
+                val score = output[0][4 + c][i]
                 if (score > bestScore) {
                     bestScore = score
                     bestClass = c
                 }
             }
 
-            val minConf =
-                if (labels[bestClass].endsWith("_pin")) 0.15f else confidenceThreshold
+            val minConf = when (labels[bestClass]) {
+                "wire_endpoint" -> 0.10f
+                else -> confThreshold
+            }
 
             if (bestScore < minConf) continue
-
-            if (bestClass == -1) continue
 
             val cx = output[0][0][i] * inputSize
             val cy = output[0][1][i] * inputSize
@@ -90,112 +90,85 @@ class CircuitDetector(context: Context) {
             val bw = w / lb.scale
             val bh = h / lb.scale
 
-            Log.d("BOX_DEBUG", "cx=$cx cy=$cy w=$w h=$h score=$bestScore")
+            val left   = (x - bw / 2).coerceIn(0f, bitmap.width.toFloat())
+            val top    = (y - bh / 2).coerceIn(0f, bitmap.height.toFloat())
+            val right  = (x + bw / 2).coerceIn(0f, bitmap.width.toFloat())
+            val bottom = (y + bh / 2).coerceIn(0f, bitmap.height.toFloat())
 
-            val label =
-                if (bestClass < labels.size) labels[bestClass] else "unknown"
-
-            detections.add(
+            results.add(
                 Detection(
-                    label = label,
-                    confidence = bestScore,
-                    boundingBox = RectF(
-                        x - bw / 2,
-                        y - bh / 2,
-                        x + bw / 2,
-                        y + bh / 2
-                    )
+                    labels[bestClass],
+                    bestScore,
+                    RectF(left, top, right, bottom)
                 )
             )
+
         }
 
-
-        Log.d("ARCUIT_DEBUG", "Detections count = ${detections.size}")
-
-        val finalDetections = nonMaxSuppression(detections)
-        Log.d("ARCUIT_DEBUG", "After NMS = ${finalDetections.size}")
-        return finalDetections
+        return clusterDetections(
+            nonMaxSuppression(results)
+        )
 
     }
 
-    private fun iou(a: RectF, b: RectF): Float {
-        val interLeft = maxOf(a.left, b.left)
-        val interTop = maxOf(a.top, b.top)
-        val interRight = minOf(a.right, b.right)
-        val interBottom = minOf(a.bottom, b.bottom)
+    private fun nonMaxSuppression(dets: List<Detection>): List<Detection> {
+        val out = mutableListOf<Detection>()
+        val sorted = dets.sortedByDescending { it.confidence }
 
-        val interArea =
-            maxOf(0f, interRight - interLeft) *
-                    maxOf(0f, interBottom - interTop)
+        for (d in sorted) {
+            var keep = true
 
-        val areaA = (a.right - a.left) * (a.bottom - a.top)
-        val areaB = (b.right - b.left) * (b.bottom - b.top)
+            for (p in out) {
+                if (d.label != p.label) continue
 
-        return interArea / (areaA + areaB - interArea + 1e-6f)
+                val iouThresh = when (d.label) {
+                    "wire_endpoint" -> 0.05f
+                    "push_button" -> 0.25f
+                    else -> 0.45f
+                }
+
+                if (iou(d.boundingBox, p.boundingBox) > iouThresh) {
+                    keep = false
+                    break
+                }
+            }
+
+            if (keep) out.add(d)
+        }
+
+        return out
     }
-
-    private fun area(r: RectF): Float {
-        return maxOf(0f, r.width()) * maxOf(0f, r.height())
-    }
-
-    private val noNmsClasses = setOf(
-        "vcc_pin",
-        "gnd_pin",
-        "wire_endpoint"
-    )
-
-    private fun nonMaxSuppression(
-        detections: List<Detection>
+    private fun clusterDetections(
+        detections: List<Detection>,
+        radiusPx: Float = 14f
     ): List<Detection> {
 
         val result = mutableListOf<Detection>()
-        val sorted = detections.sortedByDescending { it.confidence }
 
-        for (det in sorted) {
+        for (d in detections.sortedByDescending { it.confidence }) {
+            val cx = d.boundingBox.centerX()
+            val cy = d.boundingBox.centerY()
 
-            // 🔥 Do NOT suppress these classes
-            if (det.label in noNmsClasses) {
-                result.add(det)
-                continue
+            val exists = result.any {
+                if (d.label == "wire_endpoint") return@any false
+                val dx = it.boundingBox.centerX() - cx
+                val dy = it.boundingBox.centerY() - cy
+                dx * dx + dy * dy < radiusPx * radiusPx
             }
 
-            var keep = true
-            val detArea = area(det.boundingBox)
-
-            for (picked in result) {
-
-                if (det.label != picked.label) continue
-
-                val pickedArea = area(picked.boundingBox)
-                val iouVal = iou(det.boundingBox, picked.boundingBox)
-
-                val isSmall = detArea < 32f * 32f
-                val isPickedSmall = pickedArea < 32f * 32f
-
-                if (isSmall && isPickedSmall) {
-                    if (iouVal > 0.75f) {
-                        keep = false
-                        break
-                    }
-                }
-                else if (isSmall && !isPickedSmall) {
-                    continue
-                }
-                else {
-                    if (iouVal > 0.45f) {
-                        keep = false
-                        break
-                    }
-                }
-            }
-
-            if (keep) result.add(det)
+            if (!exists) result.add(d)
         }
 
         return result
     }
 
-
-
-
+    private fun iou(a: RectF, b: RectF): Float {
+        val l = maxOf(a.left, b.left)
+        val t = maxOf(a.top, b.top)
+        val r = minOf(a.right, b.right)
+        val btm = minOf(a.bottom, b.bottom)
+        val inter = maxOf(0f, r - l) * maxOf(0f, btm - t)
+        val ua = a.width() * a.height() + b.width() * b.height() - inter
+        return inter / (ua + 1e-6f)
+    }
 }

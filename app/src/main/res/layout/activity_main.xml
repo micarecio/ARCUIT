@@ -1,29 +1,141 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root_container"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@drawable/background_gradient">
 
-    <!-- Camera preview -->
+    <!-- Camera Preview -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="fitCenter" />
 
-    <!-- Overlay for bounding boxes (later) -->
+    <!-- Bounding Boxes / Pins / AR Overlay -->
     <com.sd.arcuit.OverlayView
         android:id="@+id/overlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <Button
-        android:id="@+id/btnTorch"
+    <!-- Scrollable right-side button stack -->
+    <ScrollView
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Flash"
-        android:layout_margin="16dp"
-        android:layout_gravity="bottom|end"/>
+        android:layout_height="match_parent"
+        android:layout_gravity="end|top"
+        android:padding="16dp">
 
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal">
+
+            <!-- Torch Button -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnTorch"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_flash_off"
+                    android:tint="#00FFCC"
+                    android:backgroundTint="#1A1A1A"
+                    app:fabCustomSize="64dp"
+                    android:contentDescription="Toggle Flash" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Flash"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"/>
+            </FrameLayout>
+
+            <!-- Detection Button -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnDetection"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_detection"
+                    android:tint="#00FFCC"
+                    android:backgroundTint="#1A1A1A"
+                    app:fabCustomSize="64dp"
+                    android:contentDescription="Detection Layer" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Detect"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"/>
+            </FrameLayout>
+
+            <!-- 2D AR Button -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnAR2D"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_2d_ar"
+                    android:tint="#00FFCC"
+                    android:backgroundTint="#1A1A1A"
+                    app:fabCustomSize="64dp"
+                    android:contentDescription="2D AR Layer" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="2D AR"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"/>
+            </FrameLayout>
+
+            <!-- Circuit Diagram Button -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnCircuit"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_circuit"
+                    android:tint="#00FFCC"
+                    android:backgroundTint="#1A1A1A"
+                    app:fabCustomSize="64dp"
+                    android:contentDescription="Circuit Diagram Layer" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Circuit"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"/>
+            </FrameLayout>
+
+        </LinearLayout>
+    </ScrollView>
 
 </FrameLayout>
