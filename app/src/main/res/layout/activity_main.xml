@@ -84,32 +84,6 @@
                     android:layout_marginTop="70dp"/>
             </FrameLayout>
 
-            <!-- 2D AR Button -->
-            <FrameLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
-
-                <com.google.android.material.floatingactionbutton.FloatingActionButton
-                    android:id="@+id/btnAR2D"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:src="@drawable/ic_2d_ar"
-                    android:tint="#00FFCC"
-                    android:backgroundTint="#1A1A1A"
-                    app:fabCustomSize="64dp"
-                    android:contentDescription="2D AR Layer" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="2D AR"
-                    android:textColor="#00FFCC"
-                    android:textSize="12sp"
-                    android:layout_gravity="center_horizontal|bottom"
-                    android:layout_marginTop="70dp"/>
-            </FrameLayout>
-
             <!-- Circuit Diagram Button -->
             <FrameLayout
                 android:layout_width="wrap_content"

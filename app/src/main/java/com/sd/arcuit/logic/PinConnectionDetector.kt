@@ -1,15 +1,17 @@
 package com.sd.arcuit.logic
 
 import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
 
 object PinConnectionDetector {
 
-    private const val PIN_RADIUS = 45f
+    private const val PIN_RADIUS = 28f
 
     data class PinConnection(
         val icId: String,
         val pinIndex: Int,
-        val objectId: String  // <- changed from Int to String
+        val objectId: String
     )
 
     fun detect(
@@ -19,19 +21,21 @@ object PinConnectionDetector {
 
         val connections = mutableListOf<PinConnection>()
 
+        val validObjects = objects.filter {
+            it.type != ObjectType.IC_BODY
+        }
+
         for (ic in icList) {
             for (pin in ic.pins) {
 
-                val nearest = objects
-                    .filter { it.type != ObjectType.IC_BODY }
-                    .minByOrNull { obj ->
-                        distance(pin.point.x, pin.point.y, obj)
-                    }
+                val nearest = validObjects.minByOrNull { obj ->
+                    distanceToNearestPoint(pin.point.x, pin.point.y, obj)
+                }
 
                 if (nearest != null) {
-                    val dist = distance(pin.point.x, pin.point.y, nearest)
+                    val dist = distanceToNearestPoint(pin.point.x, pin.point.y, nearest)
 
-                    if (dist < PIN_RADIUS) {
+                    if (dist <= PIN_RADIUS) {
                         connections.add(
                             PinConnection(
                                 icId = ic.id,
@@ -47,15 +51,15 @@ object PinConnectionDetector {
         return connections
     }
 
-    private fun distance(
+    private fun distanceToNearestPoint(
         px: Float,
         py: Float,
         obj: DetectedObject
     ): Float {
 
-        val cx = (obj.left + obj.right) / 2f
-        val cy = (obj.top + obj.bottom) / 2f
+        val nearestX = px.coerceIn(obj.left, obj.right)
+        val nearestY = py.coerceIn(obj.top, obj.bottom)
 
-        return hypot(px - cx, py - cy)
+        return hypot(px - nearestX, py - nearestY)
     }
 }

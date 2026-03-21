@@ -2,13 +2,8 @@ package com.sd.arcuit.logic
 
 class UnionFind(size: Int) {
 
-    private val parent = IntArray(size)
-
-    init {
-        for (i in 0 until size) {
-            parent[i] = i
-        }
-    }
+    private val parent = IntArray(size) { it }
+    private val rank = IntArray(size)
 
     fun find(x: Int): Int {
         if (parent[x] != x) {
@@ -21,8 +16,15 @@ class UnionFind(size: Int) {
         val rootA = find(a)
         val rootB = find(b)
 
-        if (rootA != rootB) {
-            parent[rootB] = rootA
+        if (rootA == rootB) return
+
+        when {
+            rank[rootA] < rank[rootB] -> parent[rootA] = rootB
+            rank[rootA] > rank[rootB] -> parent[rootB] = rootA
+            else -> {
+                parent[rootB] = rootA
+                rank[rootA]++
+            }
         }
     }
 }

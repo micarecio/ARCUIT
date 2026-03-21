@@ -9,9 +9,7 @@ object CircuitAnalyzer {
         icBodies: List<ICComponent>
     ) {
 
-        // Convert YOLO detections → DetectedObject
         val detectedObjects = detections.mapIndexed { index, d ->
-
             DetectedObject(
                 id = "OBJ_$index",
                 type = mapLabelToType(d.label),
@@ -22,49 +20,50 @@ object CircuitAnalyzer {
             )
         }
 
-        // Build connection points
-        val connectionPoints = detectedObjects.map { obj ->
-
-            ConnectionPoint(
-                label = obj.type.name.lowercase(),
-                x = (obj.left + obj.right) / 2f,
-                y = (obj.top + obj.bottom) / 2f
-            )
-        }
-
-        // Convert connectionPoints → Nodes
-        val nodes = connectionPoints.mapIndexed { index, pt ->
-
+        val objectNodes = detectedObjects.mapIndexed { index, obj ->
             Node(
                 id = index,
-                x = pt.x,
-                y = pt.y,
-                type = pt.label
+                x = (obj.left + obj.right) / 2f,
+                y = (obj.top + obj.bottom) / 2f,
+                type = mapObjectTypeToNodeLabel(obj.type),
+                left = obj.left,
+                top = obj.top,
+                right = obj.right,
+                bottom = obj.bottom
             )
         }
 
-        // 4️⃣ Build nets
+        val startId = objectNodes.size
+
+        val pinNodes = icBodies.flatMapIndexed { icIndex, ic ->
+            ic.pins.mapIndexed { pinIndex, pin ->
+                Node(
+                    id = startId + icIndex * 100 + pinIndex,
+                    x = pin.point.x,
+                    y = pin.point.y,
+                    type = "${ic.id}:${pin.index}",
+                    left = pin.point.x - 4f,
+                    top = pin.point.y - 4f,
+                    right = pin.point.x + 4f,
+                    bottom = pin.point.y + 4f
+                )
+            }
+        }
+
+        val nodes = objectNodes + pinNodes
+
         val nets = NetBuilder().buildNets(nodes)
 
-        // 5️⃣ Debug print
         nets.forEach { (id, nodeList) ->
-
             Log.d("NET", "NET_$id")
-
             nodeList.forEach { node ->
-
-                Log.d(
-                    "NET",
-                    " ${node.type} (${node.x}, ${node.y})"
-                )
+                Log.d("NET", " ${node.type} (${node.x}, ${node.y})")
             }
         }
     }
 
     private fun mapLabelToType(label: String): ObjectType {
-
         return when (label.lowercase()) {
-
             "ic_body" -> ObjectType.IC_BODY
             "wire_endpoint" -> ObjectType.WIRE_ENDPOINT
             "led" -> ObjectType.LED
@@ -73,8 +72,20 @@ object CircuitAnalyzer {
             "switch" -> ObjectType.SWITCH
             "pos_rail" -> ObjectType.VCC
             "neg_rail" -> ObjectType.GND
-
             else -> ObjectType.WIRE_ENDPOINT
+        }
+    }
+
+    private fun mapObjectTypeToNodeLabel(type: ObjectType): String {
+        return when (type) {
+            ObjectType.IC_BODY -> "ic_body"
+            ObjectType.WIRE_ENDPOINT -> "wire_endpoint"
+            ObjectType.LED -> "led"
+            ObjectType.RESISTOR -> "resistor"
+            ObjectType.PUSH_BUTTON -> "push_button"
+            ObjectType.SWITCH -> "switch"
+            ObjectType.VCC -> "pos_rail"
+            ObjectType.GND -> "neg_rail"
         }
     }
 }

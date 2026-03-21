@@ -30,14 +30,12 @@ import com.sd.arcuit.logic.ICPinMaps
 import com.sd.arcuit.logic.Net
 import com.sd.arcuit.logic.NetBuilder
 import com.sd.arcuit.logic.ObjectType
-import com.sd.arcuit.logic.PinConnectionDetector
 import com.sd.arcuit.logic.PinRole
 import com.sd.arcuit.logic.Node
 
 import com.sd.arcuit.util.toBitmap
 
 import java.util.concurrent.Executors
-import kotlin.math.hypot
 
 class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
@@ -45,8 +43,10 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
     private lateinit var overlayView: OverlayView
     private lateinit var detector: CircuitDetector
 
-    private lateinit var btnAR2D: FloatingActionButton
-    private var isAR2D = false
+    private var debugFrameCounter = 0
+
+    private lateinit var btnDetection: FloatingActionButton
+    private lateinit var btnCircuit: FloatingActionButton
 
     private var stableFrames = 0
     private val REQUIRED_STABLE_FRAMES = 8
@@ -60,9 +60,6 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private var lastAnalyzedTime = 0L
-
-    // 🔒 Persistent electrical points across frames
-    private val persistentPoints = mutableListOf<ConnectionPoint>()
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -92,47 +89,99 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         else permissionLauncher.launch(Manifest.permission.CAMERA)
 
         // Detection Button
-        val btnDetection = findViewById<FloatingActionButton>(R.id.btnDetection)
+        btnDetection = findViewById(R.id.btnDetection)
         btnDetection.setOnClickListener {
             overlayView.setLayer(OverlayView.Layer.BOUNDING_BOX)
-            // Optional: highlight active button
             highlightButton(btnDetection)
         }
 
-        // 2D AR Button
-        btnAR2D = findViewById(R.id.btnAR2D)
-        btnAR2D.setOnClickListener {
-            overlayView.setLayer(OverlayView.Layer.AR_2D)
-            highlightButton(btnAR2D)
-        }
-
         // Circuit Diagram Button
-        val btnCircuit = findViewById<FloatingActionButton>(R.id.btnCircuit)
+        btnCircuit = findViewById(R.id.btnCircuit)
         btnCircuit.setOnClickListener {
             overlayView.setLayer(OverlayView.Layer.CIRCUIT_DIAGRAM)
             highlightButton(btnCircuit)
         }
     }
 
-    // Optional helper to highlight which layer button is active
     private fun highlightButton(activeButton: FloatingActionButton) {
-        val buttons = listOf(
-            findViewById<FloatingActionButton>(R.id.btnDetection),
-            btnAR2D,
-            findViewById<FloatingActionButton>(R.id.btnCircuit)
-        )
+        val buttons = listOf(btnDetection, btnCircuit)
 
         buttons.forEach { btn ->
             if (btn == activeButton) {
                 btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00FFCC"))
-                btn.elevation = 24f
+                btn.imageTintList = ColorStateList.valueOf(Color.BLACK)
+                btn.alpha = 1f
+                btn.scaleX = 1.15f
+                btn.scaleY = 1.15f
             } else {
                 btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1A1A1A"))
-                btn.elevation = 12f
+                btn.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btn.alpha = 0.6f
+                btn.scaleX = 1f
+                btn.scaleY = 1f
             }
         }
     }
 
+    private fun assignWireIdsToEndpoints(boxes: List<BoundingBox>): Map<Int, String> {
+
+        val endpointIndices = boxes.mapIndexedNotNull { index, box ->
+            if (box.label == "wire_endpoint") index else null
+        }.toMutableList()
+
+        val result = mutableMapOf<Int, String>()
+        var wireCounter = 1
+
+        while (endpointIndices.size >= 2) {
+
+            val i = endpointIndices.removeAt(0)
+            val a = boxes[i]
+
+            val ax = (a.left + a.right) / 2f
+            val ay = (a.top + a.bottom) / 2f
+
+            var bestIndex = -1
+            var bestDist = Float.MAX_VALUE
+            var bestListIndex = -1
+
+            for ((listIdx, j) in endpointIndices.withIndex()) {
+
+                val b = boxes[j]
+
+                val bx = (b.left + b.right) / 2f
+                val by = (b.top + b.bottom) / 2f
+
+                val dx = ax - bx
+                val dy = ay - by
+                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                if (dist < bestDist) {
+                    bestDist = dist
+                    bestIndex = j
+                    bestListIndex = listIdx
+                }
+            }
+
+            if (bestIndex != -1) {
+
+                val wireId = "wire_$wireCounter"
+
+                result[i] = wireId
+                result[bestIndex] = wireId
+
+                endpointIndices.removeAt(bestListIndex)
+
+                wireCounter++
+            }
+        }
+
+        // 🔥 IMPORTANT: NO endpoint should remain unpaired
+        if (endpointIndices.isNotEmpty()) {
+            Log.e("WIRE_DEBUG", "UNPAIRED ENDPOINTS: $endpointIndices")
+        }
+
+        return result
+    }
 
     private fun startCamera() {
         val providerFuture = ProcessCameraProvider.getInstance(this)
@@ -152,13 +201,6 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
             analysis.setAnalyzer(analysisExecutor) { imageProxy ->
 
-                val now = System.currentTimeMillis()
-                if (now - lastAnalyzedTime < 100) {
-                    imageProxy.close()
-                    return@setAnalyzer
-                }
-                lastAnalyzedTime = now
-
                 val fullBitmap = imageProxy.toBitmap()
                 val crop = imageProxy.cropRect
                 val bitmap = Bitmap.createBitmap(
@@ -170,17 +212,6 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 )
 
                 val detections = detector.detect(bitmap)
-
-                if (detections.isEmpty()) {
-                    stableFrames = 0
-                } else {
-                    stableFrames++
-                }
-
-                if (stableFrames < REQUIRED_STABLE_FRAMES) {
-                    imageProxy.close()
-                    return@setAnalyzer
-                }
 
                 val viewW = overlayView.width.toFloat()
                 val viewH = overlayView.height.toFloat()
@@ -208,6 +239,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 // ---------------- IC BODY TRACKING ----------------
 
                 rawBoxes.forEach { box ->
+
                     if (box.label != "ic_body") {
                         finalBoxes.add(box)
                         return@forEach
@@ -215,25 +247,23 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                     val rect = box.toRectF()
 
-                    val frozen = icMap.values.firstOrNull {
-                        it.id in icLabels && RectF.intersects(it.boundingBox, rect)
-                    }
-
-                    if (frozen != null) {
-                        icBodies.add(frozen)
-                        return@forEach
-                    }
-
                     val matched = icMap.values.firstOrNull {
-                        it.id !in icLabels && RectF.intersects(it.boundingBox, rect)
+                        RectF.intersects(it.boundingBox, rect)
                     }
 
                     val ic = if (matched != null) {
+
+                        // ALWAYS update bounding box
                         matched.boundingBox.set(rect)
                         matched
+
                     } else {
+
                         val id = "IC_${rect.centerX().toInt()}_${rect.centerY().toInt()}"
-                        ICComponent(id, RectF(rect)).also { icMap[id] = it }
+
+                        ICComponent(id, RectF(rect)).also {
+                            icMap[id] = it
+                        }
                     }
 
                     icBodies.add(ic)
@@ -260,7 +290,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 icBodies.forEach { ic ->
 
                     val pinCountPerSide = 7
-                    val PIN_OFFSET = 6f
+                    val PIN_OFFSET = ic.boundingBox.height() * 0.15f
 
                     val width = ic.boundingBox.width()
                     val height = ic.boundingBox.height()
@@ -282,20 +312,23 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                             val y = ic.boundingBox.top + spacing * i
 
+                            // LEFT SIDE → 1..7
+                            val leftIndex = i
                             val leftPoint = ConnectionPoint(
-                                "${ic.id}:$i",
+                                "${ic.id}:$leftIndex",
                                 ic.boundingBox.left - PIN_OFFSET,
                                 y
                             )
 
                             ic.pins.add(
                                 ICPin(
-                                    index = i,
-                                    role = roleMap?.get(i) ?: PinRole.UNKNOWN,
+                                    index = leftIndex,
+                                    role = roleMap?.get(leftIndex) ?: PinRole.UNKNOWN,
                                     point = leftPoint
                                 )
                             )
 
+                            // RIGHT SIDE → 14..8
                             val rightIndex = 15 - i
 
                             val rightPoint = ConnectionPoint(
@@ -312,7 +345,6 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                                 )
                             )
                         }
-
                     } else {
 
                         val spacing = width / (pinCountPerSide + 1)
@@ -321,26 +353,13 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                             val x = ic.boundingBox.left + spacing * i
 
-                            val topPoint = ConnectionPoint(
-                                "${ic.id}:$i",
-                                x,
-                                ic.boundingBox.top - PIN_OFFSET
-                            )
-
-                            ic.pins.add(
-                                ICPin(
-                                    index = i,
-                                    role = roleMap?.get(i) ?: PinRole.UNKNOWN,
-                                    point = topPoint
-                                )
-                            )
-
-                            val bottomIndex = 15 - i
+                            // BOTTOM → 1..7
+                            val bottomIndex = i
 
                             val bottomPoint = ConnectionPoint(
                                 "${ic.id}:$bottomIndex",
                                 x,
-                                ic.boundingBox.bottom + PIN_OFFSET
+                                ic.boundingBox.bottom + height * 0.10f
                             )
 
                             ic.pins.add(
@@ -348,6 +367,23 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                                     index = bottomIndex,
                                     role = roleMap?.get(bottomIndex) ?: PinRole.UNKNOWN,
                                     point = bottomPoint
+                                )
+                            )
+
+                            // TOP → 14..8
+                            val topIndex = 15 - i
+
+                            val topPoint = ConnectionPoint(
+                                "${ic.id}:$topIndex",
+                                x,
+                                ic.boundingBox.top - height * 0.10f
+                            )
+
+                            ic.pins.add(
+                                ICPin(
+                                    index = topIndex,
+                                    role = roleMap?.get(topIndex) ?: PinRole.UNKNOWN,
+                                    point = topPoint
                                 )
                             )
                         }
@@ -361,9 +397,10 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 }
                 // ---------------- CONNECTION POINTS ----------------
 
+                val connectionPoints = mutableListOf<ConnectionPoint>()
+
                 finalBoxes.forEach { box ->
                     when (box.label) {
-
                         "wire_endpoint",
                         "pos_rail",
                         "neg_rail",
@@ -371,11 +408,16 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                         "led",
                         "switch",
                         "push_button" -> {
-
                             val cx = (box.left + box.right) / 2f
                             val cy = (box.top + box.bottom) / 2f
 
-                            findOrCreatePoint(cx, cy, box.label)
+                            connectionPoints.add(
+                                ConnectionPoint(
+                                    label = box.label,
+                                    x = cx,
+                                    y = cy
+                                )
+                            )
                         }
                     }
                 }
@@ -394,32 +436,96 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                     )
                 }
 
-                // 2️⃣ Convert bounding boxes into ConnectionPoints (for NetBuilder graph)
-                // 2️⃣ Build connection points list for graph
-                val connectionPoints = mutableListOf<ConnectionPoint>()
-
-                // include detected electrical points
-                connectionPoints.addAll(persistentPoints)
-
-                // include IC pins (generated each frame)
+                // include IC pins for current frame only
                 icBodies.forEach { ic ->
                     ic.pins.forEach { pin ->
                         connectionPoints.add(pin.point)
                     }
                 }
 
-                // 3️⃣ Detect IC pin connections (requires List<DetectedObject>)
-                val pinConnections = PinConnectionDetector.detect(icBodies, detectedObjects)
+                // Detect IC pin connections
+//                val pinConnections = PinConnectionDetector.detect(icBodies, detectedObjects)
 
-                // 4️⃣ Build electrical nets using the new graph-based NetBuilder
+                val endpointWireIds = assignWireIdsToEndpoints(finalBoxes)
 
-                val nodes = connectionPoints.mapIndexed { index, pt ->
-                    Node(
-                        id = index,
-                        x = pt.x,
-                        y = pt.y,
-                        type = pt.label
-                    )
+                // Build electrical nets
+                val nodes = mutableListOf<Node>()
+
+// 1️⃣ Add detected components and rails
+                finalBoxes.forEach { box ->
+
+                    // ic_body is not an electrical node
+                    if (box.label == "ic_body") return@forEach
+
+                    finalBoxes.forEachIndexed { boxIndex, box ->
+
+                        if (box.label == "ic_body") return@forEachIndexed
+
+                        val wireId = if (box.label == "wire_endpoint") {
+                            endpointWireIds[boxIndex]
+                        } else {
+                            null
+                        }
+
+                        nodes.add(
+                            Node(
+                                id = nodes.size,
+                                x = (box.left + box.right) / 2f,
+                                y = (box.top + box.bottom) / 2f,
+                                type = box.label,
+                                left = box.left,
+                                top = box.top,
+                                right = box.right,
+                                bottom = box.bottom,
+                                wireId = wireId
+                            )
+                        )
+
+                        nodes.forEach { node ->
+
+                            if (node.type == "wire_endpoint") {
+
+                                // Find nearest rail
+                                val nearestRail = nodes
+                                    .filter { it.type == "pos_rail" || it.type == "neg_rail" }
+                                    .minByOrNull {
+                                        val dx = node.x - it.x
+                                        val dy = node.y - it.y
+                                        kotlin.math.sqrt(dx * dx + dy * dy)
+                                    }
+
+                                if (nearestRail != null) {
+                                    node.metaRailType = nearestRail.type
+                                }
+                            }
+                        }
+                    }
+                }
+
+// 2️⃣ Add IC pins (THIS WAS MISSING)
+                icBodies.forEach { ic ->
+
+                    ic.pins.forEach { pin ->
+
+                        nodes.add(
+                            Node(
+                                id = nodes.size,
+                                x = pin.point.x,
+                                y = pin.point.y,
+                                type = "${ic.id}:${pin.index}",
+                                left = pin.point.x - 3f,
+                                top = pin.point.y - 3f,
+                                right = pin.point.x + 3f,
+                                bottom = pin.point.y + 3f
+                            )
+                        )
+                    }
+                    ic.pins.sortedBy { it.index }.forEach { pin ->
+                        Log.d(
+                            "PIN_POS",
+                            "IC=${ic.id} pin=${pin.index} x=${pin.point.x} y=${pin.point.y}"
+                        )
+                    }
                 }
 
                 val nets = NetBuilder().buildNets(nodes)
@@ -439,11 +545,14 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                 overlayView.setNets(overlayNets)
 
-                overlayNets.forEach { net ->
-                    Log.d("NET_DEBUG", "${net.id} -> ${net.points.map { it.label }}")
+                debugFrameCounter++
+                if (debugFrameCounter % 15 == 0) {
+                    overlayNets.forEach { net ->
+                        Log.d("NET_DEBUG", "${net.id} -> ${net.points.map { it.label }}")
+                    }
                 }
 
-// ---------------- CIRCUIT ANALYSIS ----------------
+                // ---------------- CIRCUIT ANALYSIS ----------------
                 val logicDetections = detections.map {
                     com.sd.arcuit.logic.Detection(
                         it.label,
@@ -570,30 +679,5 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
             .show()
     }
 
-
-    private fun findOrCreatePoint(
-        x: Float,
-        y: Float,
-        label: String
-    ): ConnectionPoint {
-
-        if (label == "ic_pin") {
-            return ConnectionPoint(label, x, y)
-        }
-
-        val existing = persistentPoints.firstOrNull {
-            hypot(it.x - x, it.y - y) < 12f
-        }
-
-        return if (existing != null) {
-            existing.x = x
-            existing.y = y
-            existing
-        } else {
-            ConnectionPoint(label, x, y).also {
-                persistentPoints.add(it)
-            }
-        }
-    }
 
 }
