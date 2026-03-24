@@ -1,36 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="horizontal"
     android:background="@drawable/background_gradient">
 
-    <!-- Camera Preview -->
-    <androidx.camera.view.PreviewView
-        android:id="@+id/previewView"
-        android:layout_width="match_parent"
+    <!-- Camera area -->
+    <FrameLayout
+        android:id="@+id/camera_container"
+        android:layout_width="0dp"
         android:layout_height="match_parent"
-        android:scaleType="fitCenter" />
+        android:layout_weight="1">
 
-    <!-- Bounding Boxes / Pins / AR Overlay -->
-    <com.sd.arcuit.OverlayView
-        android:id="@+id/overlayView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        <androidx.camera.view.PreviewView
+            android:id="@+id/previewView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter" />
 
-    <!-- Scrollable right-side button stack -->
+        <com.sd.arcuit.OverlayView
+            android:id="@+id/overlayView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </FrameLayout>
+
+    <!-- Right-side buttons panel -->
     <ScrollView
-        android:layout_width="wrap_content"
+        android:layout_width="96dp"
         android:layout_height="match_parent"
-        android:layout_gravity="end|top"
-        android:padding="16dp">
+        android:fillViewport="true"
+        android:background="#1A1A1A"
+        android:padding="12dp">
 
         <LinearLayout
-            android:orientation="vertical"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_horizontal">
+            android:orientation="vertical"
+            android:gravity="top|center_horizontal">
 
             <!-- Torch Button -->
             <FrameLayout
@@ -45,17 +54,17 @@
                     android:src="@drawable/ic_flash_off"
                     android:tint="#00FFCC"
                     android:backgroundTint="#1A1A1A"
-                    app:fabCustomSize="64dp"
-                    android:contentDescription="Toggle Flash" />
+                    android:contentDescription="Toggle Flash"
+                    app:fabCustomSize="64dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"
                     android:text="Flash"
                     android:textColor="#00FFCC"
-                    android:textSize="12sp"
-                    android:layout_gravity="center_horizontal|bottom"
-                    android:layout_marginTop="70dp"/>
+                    android:textSize="12sp" />
             </FrameLayout>
 
             <!-- Detection Button -->
@@ -71,17 +80,17 @@
                     android:src="@drawable/ic_detection"
                     android:tint="#00FFCC"
                     android:backgroundTint="#1A1A1A"
-                    app:fabCustomSize="64dp"
-                    android:contentDescription="Detection Layer" />
+                    android:contentDescription="Detection Layer"
+                    app:fabCustomSize="64dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"
                     android:text="Detect"
                     android:textColor="#00FFCC"
-                    android:textSize="12sp"
-                    android:layout_gravity="center_horizontal|bottom"
-                    android:layout_marginTop="70dp"/>
+                    android:textSize="12sp" />
             </FrameLayout>
 
             <!-- Circuit Diagram Button -->
@@ -96,20 +105,20 @@
                     android:src="@drawable/ic_circuit"
                     android:tint="#00FFCC"
                     android:backgroundTint="#1A1A1A"
-                    app:fabCustomSize="64dp"
-                    android:contentDescription="Circuit Diagram Layer" />
+                    android:contentDescription="Circuit Diagram Layer"
+                    app:fabCustomSize="64dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginTop="70dp"
                     android:text="Circuit"
                     android:textColor="#00FFCC"
-                    android:textSize="12sp"
-                    android:layout_gravity="center_horizontal|bottom"
-                    android:layout_marginTop="70dp"/>
+                    android:textSize="12sp" />
             </FrameLayout>
 
         </LinearLayout>
     </ScrollView>
 
-</FrameLayout>
+</LinearLayout>
