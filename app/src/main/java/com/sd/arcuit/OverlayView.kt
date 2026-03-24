@@ -394,7 +394,7 @@ class OverlayView @JvmOverloads constructor(
                             ConnectionMarker(
                                 x = pin.point.x,
                                 y = pin.point.y,
-                                state = if (isConnected) PinVisualState.GREEN else PinVisualState.RED
+                                state = if (isConnected) PinVisualState.GREEN else PinVisualState.GRAY
                             )
                         )
                     }
@@ -420,7 +420,7 @@ class OverlayView @JvmOverloads constructor(
                         ConnectionMarker(
                             x = pin.point.x,
                             y = pin.point.y,
-                            state = if (isConnected) PinVisualState.GREEN else PinVisualState.RED
+                            state = if (isConnected) PinVisualState.GREEN else PinVisualState.GRAY
                         )
                     )
                 }
