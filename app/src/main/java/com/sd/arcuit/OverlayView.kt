@@ -325,39 +325,54 @@ class OverlayView @JvmOverloads constructor(
         val connectedPinsByIc = mutableMapOf<String, MutableSet<Int>>()
 
         // 🔹 Detect connected pins (ONLY endpoint-based)
-        newNets.forEach { net ->
+        val detectedObjects = boxes.mapIndexedNotNull { index, box ->
 
-            val pins = net.points.filter { it.label.contains(":") }
-            val endpoints = net.points.filter { it.label == "wire_endpoint" }
-
-            if (endpoints.isEmpty()) return@forEach
-
-            pins.forEach { pinPoint ->
-
-                val parts = pinPoint.label.split(":")
-                if (parts.size != 2) return@forEach
-
-                val icId = parts[0]
-                val pinIndex = parts[1].toIntOrNull() ?: return@forEach
-
-                val nearest = endpoints.minByOrNull {
-                    distance(pinPoint.x, pinPoint.y, it.x, it.y)
-                }
-
-                if (nearest != null && distance(pinPoint.x, pinPoint.y, nearest.x, nearest.y) < 100f) {
-                    connectedPinsByIc.getOrPut(icId) { mutableSetOf() }.add(pinIndex)
-
-                    newSegments.add(
-                        GuideSegment(
-                            startX = pinPoint.x,
-                            startY = pinPoint.y,
-                            endX = nearest.x,
-                            endY = nearest.y,
-                            isCorrect = true
-                        )
-                    )
-                }
+            val mappedType = when (box.label) {
+                "ic_body" -> com.sd.arcuit.logic.ObjectType.IC_BODY
+                "wire_endpoint" -> com.sd.arcuit.logic.ObjectType.WIRE_ENDPOINT
+                "resistor" -> com.sd.arcuit.logic.ObjectType.RESISTOR
+                "led" -> com.sd.arcuit.logic.ObjectType.LED
+                "switch" -> com.sd.arcuit.logic.ObjectType.SWITCH
+                "push_button" -> com.sd.arcuit.logic.ObjectType.PUSH_BUTTON
+                "vcc_pin" -> com.sd.arcuit.logic.ObjectType.VCC
+                "gnd_pin" -> com.sd.arcuit.logic.ObjectType.GND
+                else -> null
             }
+
+            if (mappedType == null) {
+                null
+            } else {
+                com.sd.arcuit.logic.DetectedObject(
+                    id = index.toString(),
+                    type = mappedType,
+                    left = box.left,
+                    top = box.top,
+                    right = box.right,
+                    bottom = box.bottom
+                )
+            }
+        }
+
+        val connections = com.sd.arcuit.logic.PinConnectionDetector.detect(icBodies, detectedObjects)
+
+        connections.forEach { conn ->
+
+            connectedPinsByIc
+                .getOrPut(conn.icId) { mutableSetOf() }
+                .add(conn.pinIndex)
+
+            val ic = icBodies.firstOrNull { it.id == conn.icId } ?: return@forEach
+            val pin = ic.pins.firstOrNull { it.index == conn.pinIndex } ?: return@forEach
+
+            newSegments.add(
+                GuideSegment(
+                    startX = pin.point.x,
+                    startY = pin.point.y,
+                    endX = conn.objectX,
+                    endY = conn.objectY,
+                    isCorrect = true
+                )
+            )
         }
 
         // 🔹 Apply gate logic
@@ -366,6 +381,27 @@ class OverlayView @JvmOverloads constructor(
             val icType = icLabels[ic.id] ?: return@forEach
             val groups = com.sd.arcuit.logic.ICGateGroups.DIP14[icType] ?: return@forEach
             val connectedPins = connectedPinsByIc[ic.id] ?: emptySet<Int>()
+
+            ic.pins.forEach { pin ->
+
+                when (pin.role) {
+                    com.sd.arcuit.logic.PinRole.VCC,
+                    com.sd.arcuit.logic.PinRole.GND -> {
+
+                        val isConnected = pin.index in connectedPins
+
+                        newMarkers.add(
+                            ConnectionMarker(
+                                x = pin.point.x,
+                                y = pin.point.y,
+                                state = if (isConnected) PinVisualState.GREEN else PinVisualState.RED
+                            )
+                        )
+                    }
+
+                    else -> Unit
+                }
+            }
 
             groups.forEach { group ->
 
@@ -384,7 +420,7 @@ class OverlayView @JvmOverloads constructor(
                         ConnectionMarker(
                             x = pin.point.x,
                             y = pin.point.y,
-                            state = if (isConnected) PinVisualState.GREEN else PinVisualState.GRAY
+                            state = if (isConnected) PinVisualState.GREEN else PinVisualState.RED
                         )
                     )
                 }

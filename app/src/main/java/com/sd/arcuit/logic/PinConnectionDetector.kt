@@ -1,12 +1,12 @@
 package com.sd.arcuit.logic
 
-import kotlin.math.hypot
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.abs
 
 object PinConnectionDetector {
 
-    private const val PIN_RADIUS = 28f
+    private const val FORWARD_DISTANCE = 100f
+    private const val SIDE_TOLERANCE = 18f
+    private const val MIN_FORWARD_OFFSET = 4f
 
     data class PinConnection(
         val icId: String,
@@ -25,31 +25,98 @@ object PinConnectionDetector {
         val connections = mutableListOf<PinConnection>()
 
         val validObjects = objects.filter {
-            it.type != ObjectType.IC_BODY
+            it.type == ObjectType.WIRE_ENDPOINT ||
+                    it.type == ObjectType.VCC ||
+                    it.type == ObjectType.GND
         }
 
         for (ic in icList) {
-            for (pin in ic.pins) {
+            val icCenterX = ic.boundingBox.centerX()
+            val icCenterY = ic.boundingBox.centerY()
+            val icWidth = ic.boundingBox.width()
+            val icHeight = ic.boundingBox.height()
 
-                val nearest = validObjects.minByOrNull { obj ->
-                    distanceToNearestPoint(pin.point.x, pin.point.y, obj)
+            val isVerticalIc = icHeight > icWidth
+
+            for (pin in ic.pins) {
+                val pinX = pin.point.x
+                val pinY = pin.point.y
+
+                val candidates = validObjects.mapNotNull { obj ->
+                    val objCenterX = (obj.left + obj.right) / 2f
+                    val objCenterY = (obj.top + obj.bottom) / 2f
+
+                    if (isVerticalIc) {
+                        // IC is vertical on screen -> pins are left/right columns
+                        val isLeftColumn = pinX < icCenterX
+
+                        val forward = if (isLeftColumn) {
+                            pinX - objCenterX
+                        } else {
+                            objCenterX - pinX
+                        }
+
+                        val sideOffset = abs(objCenterY - pinY)
+                        val forwardOk = forward >= MIN_FORWARD_OFFSET && forward <= FORWARD_DISTANCE
+                        val sideOk = sideOffset <= SIDE_TOLERANCE
+                        val directionalDominant = forward > sideOffset * 2f
+
+                        if (!forwardOk || !sideOk || !directionalDominant) {
+                            null
+                        } else {
+                            Candidate(
+                                obj = obj,
+                                centerX = objCenterX,
+                                centerY = objCenterY,
+                                forward = forward,
+                                sideOffset = sideOffset
+                            )
+                        }
+
+                    } else {
+                        // IC is horizontal on screen -> pins are top/bottom rows
+                        val isTopRow = pinY < icCenterY
+
+                        val forward = if (isTopRow) {
+                            pinY - objCenterY
+                        } else {
+                            objCenterY - pinY
+                        }
+
+                        val sideOffset = abs(objCenterX - pinX)
+                        val forwardOk = forward >= MIN_FORWARD_OFFSET && forward <= FORWARD_DISTANCE
+                        val sideOk = sideOffset <= SIDE_TOLERANCE
+                        val directionalDominant = forward > sideOffset * 2f
+
+                        if (!forwardOk || !sideOk || !directionalDominant) {
+                            null
+                        } else {
+                            Candidate(
+                                obj = obj,
+                                centerX = objCenterX,
+                                centerY = objCenterY,
+                                forward = forward,
+                                sideOffset = sideOffset
+                            )
+                        }
+                    }
                 }
 
-                if (nearest != null) {
-                    val dist = distanceToNearestPoint(pin.point.x, pin.point.y, nearest)
+                val best = candidates.minByOrNull { candidate ->
+                    candidate.sideOffset * 5f + candidate.forward
+                }
 
-                    if (dist <= PIN_RADIUS) {
-                        connections.add(
-                            PinConnection(
-                                icId = ic.id,
-                                pinIndex = pin.index,
-                                objectId = nearest.id,
-                                objectType = nearest.type,
-                                objectX = (nearest.left + nearest.right) / 2f,
-                                objectY = (nearest.top + nearest.bottom) / 2f
-                            )
+                if (best != null) {
+                    connections.add(
+                        PinConnection(
+                            icId = ic.id,
+                            pinIndex = pin.index,
+                            objectId = best.obj.id,
+                            objectType = best.obj.type,
+                            objectX = best.centerX,
+                            objectY = best.centerY
                         )
-                    }
+                    )
                 }
             }
         }
@@ -57,15 +124,11 @@ object PinConnectionDetector {
         return connections
     }
 
-    private fun distanceToNearestPoint(
-        px: Float,
-        py: Float,
-        obj: DetectedObject
-    ): Float {
-
-        val nearestX = px.coerceIn(obj.left, obj.right)
-        val nearestY = py.coerceIn(obj.top, obj.bottom)
-
-        return hypot(px - nearestX, py - nearestY)
-    }
+    private data class Candidate(
+        val obj: DetectedObject,
+        val centerX: Float,
+        val centerY: Float,
+        val forward: Float,
+        val sideOffset: Float
+    )
 }
