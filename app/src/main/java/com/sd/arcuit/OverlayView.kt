@@ -95,13 +95,174 @@ class OverlayView @JvmOverloads constructor(
         alpha = 180
     }
 
+    private val ic7400Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7400)
+    }
+
+    private val ic7401Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7401)
+    }
+
+    private val ic7402Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7402)
+    }
+
+    private val ic7403Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7403)
+    }
+
     private val ic7404Bitmap: Bitmap by lazy {
         BitmapFactory.decodeResource(resources, R.drawable.ic_7404)
     }
 
-    private val ic7400Bitmap: Bitmap by lazy {
-        BitmapFactory.decodeResource(resources, R.drawable.ic_7400)
+    private val ic7405Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7405)
     }
+
+    private val ic7406Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7406)
+    }
+
+    private val ic7407Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7407)
+    }
+
+    private val ic7408Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7408)
+    }
+
+    private val ic7409Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7409)
+    }
+
+    private val ic7410Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7410)
+    }
+
+    private val ic7411Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7411)
+    }
+
+    private val ic7412Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7412)
+    }
+
+    private val ic7413Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7413)
+    }
+
+    private val ic7414Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7414)
+    }
+
+    private val ic7415Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7415)
+    }
+
+    private val ic7416Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7416)
+    }
+
+    private val ic7417Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7417)
+    }
+
+    private val ic7418Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7418)
+    }
+
+    private val ic7419Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7419)
+    }
+
+    private val ic7420Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7420)
+    }
+
+    private val ic7421Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7421)
+    }
+
+    private val ic7422Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7422)
+    }
+
+    private val ic7424Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7424)
+    }
+
+    private val ic7425Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7425)
+    }
+
+    private val ic7426Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7426)
+    }
+
+    private val ic7427Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7427)
+    }
+
+    private val ic7428Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7428)
+    }
+
+    private val ic7430Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7430)
+    }
+
+    private val ic7432Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7432)
+    }
+
+    private val ic7433Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7433)
+    }
+
+    private val ic7437Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7437)
+    }
+
+    private val ic7438Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7438)
+    }
+
+    private val ic7440Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7440)
+    }
+
+    private val ic7486Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_7486)
+    }
+
+    private val ic74132Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_74132)
+    }
+
+    private val ic74136Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_74136)
+    }
+
+    private val ic74266Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_74266)
+    }
+
+    private val ic747001Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_747001)
+    }
+
+    private val ic747002Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_747002)
+    }
+
+    private val ic747032Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_747032)
+    }
+
+    private val ic747266Bitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.ic_747266)
+    }
+
 
     private var boxes: List<BoundingBox> = emptyList()
     private var icBodies: List<ICComponent> = emptyList()
@@ -263,9 +424,49 @@ class OverlayView @JvmOverloads constructor(
             val label = icLabels[ic.id] ?: "IC"
 
             val selectedBitmap = when (label) {
-                "7404" -> ic7404Bitmap
                 "7400" -> ic7400Bitmap
-                else -> null
+                "7401" -> ic7401Bitmap
+                "7402" -> ic7402Bitmap
+                "7405" -> ic7405Bitmap
+                "7404" -> ic7404Bitmap
+                "7403" -> ic7403Bitmap
+                "7406" -> ic7406Bitmap
+                "7407" -> ic7407Bitmap
+                "7408" -> ic7408Bitmap
+                "7409" -> ic7409Bitmap
+                "7410" -> ic7410Bitmap
+                "7411" -> ic7411Bitmap
+                "7412" -> ic7412Bitmap
+                "7413" -> ic7413Bitmap
+                "7414" -> ic7414Bitmap
+                "7415" -> ic7415Bitmap
+                "7416" -> ic7416Bitmap
+                "7417" -> ic7417Bitmap
+                "7418" -> ic7418Bitmap
+                "7419" -> ic7419Bitmap
+                "7420" -> ic7420Bitmap
+                "7421" -> ic7421Bitmap
+                "7422" -> ic7422Bitmap
+                "7424" -> ic7424Bitmap
+                "7425" -> ic7425Bitmap
+                "7426" -> ic7426Bitmap
+                "7427" -> ic7427Bitmap
+                "7428" -> ic7428Bitmap
+                "7430" -> ic7430Bitmap
+                "7432" -> ic7432Bitmap
+                "7433" -> ic7433Bitmap
+                "7437" -> ic7437Bitmap
+                "7438" -> ic7438Bitmap
+                "7440" -> ic7440Bitmap
+                "7486" -> ic7486Bitmap
+                "74132" -> ic74132Bitmap
+                "74136" -> ic74136Bitmap
+                "74266" -> ic74266Bitmap
+                "747001" -> ic747001Bitmap
+                "747002" -> ic747002Bitmap
+                "747032" -> ic747032Bitmap
+                "747266" -> ic747266Bitmap
+                  else -> null
             }
 
             if (selectedBitmap != null) {

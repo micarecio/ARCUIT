@@ -639,31 +639,62 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
         val options = when (gate) {
 
-            "NOT" -> arrayOf("7404")
+            "NOT" -> arrayOf(
+                "7404 – NOT",
+                "7405 – NOT (OC)",
+                "7406 – NOT (OC)",
+                "7414 – Schmitt NOT"
+            )
 
             "AND" -> arrayOf(
                 "7408 – 2 Inputs",
+                "7409 – 2 Inputs (OC)",
                 "7411 – 3 Inputs",
-                "7421 – 4 Inputs"
+                "7421 – 4 Inputs",
+                "7422 – 4 Inputs",
+                "7440 – 4 Inputs",
+                "747001 – Schmitt AND"
             )
 
-            "OR" -> arrayOf("7432 – 2 Inputs")
+            "OR" -> arrayOf(
+                "7432 – 2 Inputs",
+                "747032 – OR"
+            )
 
             "NAND" -> arrayOf(
                 "7400 – 2 Inputs",
+                "7401 – 2 Inputs (OC)",
+                "7403 – 2 Inputs (OC)",
                 "7410 – 3 Inputs",
+                "7412 – 3 Inputs (OC)",
+                "7413 – 4 Inputs Schmitt",
                 "7420 – 4 Inputs",
-                "7430 – 8 Inputs"
+                "7424 – Schmitt NAND",
+                "7426 – OC NAND",
+                "7430 – 8 Inputs",
+                "7437 – NAND",
+                "7438 – NAND (OC)",
+                "74132 – Schmitt NAND",
+                "74136 – Schmitt NAND"
             )
 
             "NOR" -> arrayOf(
                 "7402 – 2 Inputs",
-                "7427 – 3 Inputs"
+                "7425 – 4 Inputs",
+                "7427 – 3 Inputs",
+                "7428 – 2 Inputs",
+                "7433 – NOR (OC)",
+                "747002 – Schmitt NOR"
             )
 
-            "XOR" -> arrayOf("7486 – 2 Inputs")
+            "XOR" -> arrayOf(
+                "7486 – 2 Inputs"
+            )
 
-            "XNOR" -> arrayOf("74266 – 2 Inputs")
+            "XNOR" -> arrayOf(
+                "74266 – 2 Inputs",
+                "747266 – XNOR"
+            )
 
             else -> emptyArray()
         }
@@ -671,13 +702,19 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         AlertDialog.Builder(this)
             .setTitle("Select IC Model")
             .setItems(options) { _, which ->
-                val icCode = options[which].split(" ")[0]
+
+                // 🔥 safer extraction (no crash)
+                val icCode = options[which].substringBefore(" ")
+
                 icLabels[ic.id] = icCode
+
                 Log.d("IC_SELECTED", "IC ${ic.id} -> $icCode")
+
+                // 🔥 (optional but recommended)
+                // refreshCircuitAnalysis()
+
                 overlayView.postInvalidateOnAnimation()
             }
             .show()
     }
-
-
 }
