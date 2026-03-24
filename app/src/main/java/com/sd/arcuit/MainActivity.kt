@@ -33,6 +33,9 @@ import com.sd.arcuit.logic.ObjectType
 import com.sd.arcuit.logic.PinRole
 import com.sd.arcuit.logic.Node
 
+import android.view.ScaleGestureDetector
+import android.view.MotionEvent
+
 import com.sd.arcuit.util.toBitmap
 
 import java.util.concurrent.Executors
@@ -44,6 +47,10 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
     private lateinit var detector: CircuitDetector
 
     private var debugFrameCounter = 0
+
+    private var currentZoomRatio = 1.0f
+    private var minZoomRatio = 1.0f
+    private var maxZoomRatio = 1.0f
 
     private lateinit var btnDetection: FloatingActionButton
     private lateinit var btnCircuit: FloatingActionButton
@@ -57,7 +64,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private var lastAnalyzedTime = 0L
-    private val ANALYSIS_INTERVAL_MS = 120L
+    private val ANALYSIS_INTERVAL_MS = 40L
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -70,6 +77,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
         previewView = findViewById(R.id.previewView)
         previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
+        setupPinchToZoom()
 
         overlayView = findViewById(R.id.overlayView)
         overlayView.listener = this
@@ -98,6 +106,28 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         btnCircuit.setOnClickListener {
             overlayView.setLayer(OverlayView.Layer.CIRCUIT_DIAGRAM)
             highlightButton(btnCircuit)
+        }
+    }
+
+    private fun setupPinchToZoom() {
+        val scaleGestureDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    val cam = camera ?: return false
+
+                    currentZoomRatio *= detector.scaleFactor
+                    currentZoomRatio = currentZoomRatio.coerceIn(minZoomRatio, maxZoomRatio)
+
+                    cam.cameraControl.setZoomRatio(currentZoomRatio)
+                    return true
+                }
+            }
+        )
+
+        previewView.setOnTouchListener { _, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            true
         }
     }
 
@@ -352,14 +382,16 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                         }
                     } else {
 
-                        val spacing = width / (pinCountPerSide + 1)
+                        val insetX = width * 0.12f
+                        val usableWidth = width - insetX * 2
+                        val spacing = usableWidth / (pinCountPerSide - 1)
 
-                        for (i in 1..pinCountPerSide) {
+                        for (i in 0 until pinCountPerSide) {
 
-                            val x = ic.boundingBox.left + spacing * i
+                            val x = ic.boundingBox.left + insetX + spacing * i
 
                             // BOTTOM → 1..7
-                            val bottomIndex = i
+                            val bottomIndex = i + 1
 
                             val bottomPoint = ConnectionPoint(
                                 "${ic.id}:$bottomIndex",
@@ -376,7 +408,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                             )
 
                             // TOP → 14..8
-                            val topIndex = 15 - i
+                            val topIndex = 14 - i
 
                             val topPoint = ConnectionPoint(
                                 "${ic.id}:$topIndex",
@@ -570,6 +602,13 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 preview,
                 analysis
             )
+
+            camera?.cameraInfo?.zoomState?.value?.let { zoomState ->
+                minZoomRatio = zoomState.minZoomRatio
+                maxZoomRatio = zoomState.maxZoomRatio
+                currentZoomRatio = 2.0f.coerceIn(minZoomRatio, maxZoomRatio)
+                camera?.cameraControl?.setZoomRatio(currentZoomRatio)
+            }
 
         }, ContextCompat.getMainExecutor(this))
     }
