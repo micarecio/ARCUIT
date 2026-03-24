@@ -4,9 +4,9 @@ import kotlin.math.abs
 
 object PinConnectionDetector {
 
-    private const val FORWARD_DISTANCE = 100f
-    private const val SIDE_TOLERANCE = 18f
-    private const val MIN_FORWARD_OFFSET = 4f
+    private const val FORWARD_DISTANCE = 110f
+    private const val SIDE_TOLERANCE = 22f
+    private const val MIN_FORWARD_OFFSET = 6f
 
     data class PinConnection(
         val icId: String,
@@ -33,35 +33,35 @@ object PinConnectionDetector {
         for (ic in icList) {
             val icCenterX = ic.boundingBox.centerX()
             val icCenterY = ic.boundingBox.centerY()
-            val icWidth = ic.boundingBox.width()
-            val icHeight = ic.boundingBox.height()
-
-            val isVerticalIc = icHeight > icWidth
+            val isHorizontalIc = ic.boundingBox.width() >= ic.boundingBox.height()
 
             for (pin in ic.pins) {
                 val pinX = pin.point.x
                 val pinY = pin.point.y
 
-                val candidates = validObjects.mapNotNull { obj ->
+                val best = validObjects.mapNotNull { obj ->
                     val objCenterX = (obj.left + obj.right) / 2f
                     val objCenterY = (obj.top + obj.bottom) / 2f
 
-                    if (isVerticalIc) {
-                        // IC is vertical on screen -> pins are left/right columns
-                        val isLeftColumn = pinX < icCenterX
+                    if (isHorizontalIc) {
+                        // Horizontal IC on screen:
+                        // top pins -> upward only
+                        // bottom pins -> downward only
+                        val isTopPin = pinY < icCenterY
 
-                        val forward = if (isLeftColumn) {
-                            pinX - objCenterX
+                        val forward = if (isTopPin) {
+                            pinY - objCenterY
                         } else {
-                            objCenterX - pinX
+                            objCenterY - pinY
                         }
 
-                        val sideOffset = abs(objCenterY - pinY)
-                        val forwardOk = forward >= MIN_FORWARD_OFFSET && forward <= FORWARD_DISTANCE
-                        val sideOk = sideOffset <= SIDE_TOLERANCE
-                        val directionalDominant = forward > sideOffset * 2f
+                        val sideOffset = abs(objCenterX - pinX)
 
-                        if (!forwardOk || !sideOk || !directionalDominant) {
+                        val forwardOk = forward in MIN_FORWARD_OFFSET..FORWARD_DISTANCE
+                        val sideOk = sideOffset <= SIDE_TOLERANCE
+                        val strongDirection = forward > sideOffset * 2.5f
+
+                        if (!forwardOk || !sideOk || !strongDirection) {
                             null
                         } else {
                             Candidate(
@@ -72,23 +72,25 @@ object PinConnectionDetector {
                                 sideOffset = sideOffset
                             )
                         }
-
                     } else {
-                        // IC is horizontal on screen -> pins are top/bottom rows
-                        val isTopRow = pinY < icCenterY
+                        // Vertical IC on screen:
+                        // left pins -> left only
+                        // right pins -> right only
+                        val isLeftPin = pinX < icCenterX
 
-                        val forward = if (isTopRow) {
-                            pinY - objCenterY
+                        val forward = if (isLeftPin) {
+                            pinX - objCenterX
                         } else {
-                            objCenterY - pinY
+                            objCenterX - pinX
                         }
 
-                        val sideOffset = abs(objCenterX - pinX)
-                        val forwardOk = forward >= MIN_FORWARD_OFFSET && forward <= FORWARD_DISTANCE
-                        val sideOk = sideOffset <= SIDE_TOLERANCE
-                        val directionalDominant = forward > sideOffset * 2f
+                        val sideOffset = abs(objCenterY - pinY)
 
-                        if (!forwardOk || !sideOk || !directionalDominant) {
+                        val forwardOk = forward in MIN_FORWARD_OFFSET..FORWARD_DISTANCE
+                        val sideOk = sideOffset <= SIDE_TOLERANCE
+                        val strongDirection = forward > sideOffset * 2.5f
+
+                        if (!forwardOk || !sideOk || !strongDirection) {
                             null
                         } else {
                             Candidate(
@@ -100,10 +102,8 @@ object PinConnectionDetector {
                             )
                         }
                     }
-                }
-
-                val best = candidates.minByOrNull { candidate ->
-                    candidate.sideOffset * 5f + candidate.forward
+                }.minByOrNull { candidate ->
+                    candidate.sideOffset * 8f + candidate.forward
                 }
 
                 if (best != null) {
