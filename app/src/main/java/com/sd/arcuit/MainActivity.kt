@@ -48,9 +48,6 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
     private lateinit var btnDetection: FloatingActionButton
     private lateinit var btnCircuit: FloatingActionButton
 
-    private var stableFrames = 0
-    private val REQUIRED_STABLE_FRAMES = 8
-
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var torchEnabled = false
@@ -60,6 +57,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private var lastAnalyzedTime = 0L
+    private val ANALYSIS_INTERVAL_MS = 120L
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -200,6 +198,13 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 .build()
 
             analysis.setAnalyzer(analysisExecutor) { imageProxy ->
+
+                val now = System.currentTimeMillis()
+                if (now - lastAnalyzedTime < ANALYSIS_INTERVAL_MS) {
+                    imageProxy.close()
+                    return@setAnalyzer
+                }
+                lastAnalyzedTime = now
 
                 val fullBitmap = imageProxy.toBitmap()
                 val crop = imageProxy.cropRect
@@ -448,56 +453,48 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                 val endpointWireIds = assignWireIdsToEndpoints(finalBoxes)
 
-                // Build electrical nets
+// Build electrical nets
                 val nodes = mutableListOf<Node>()
 
-// 1️⃣ Add detected components and rails
-                finalBoxes.forEach { box ->
+// 1️⃣ Add detected components / rails / endpoints only once
+                finalBoxes.forEachIndexed { boxIndex, box ->
 
-                    // ic_body is not an electrical node
-                    if (box.label == "ic_body") return@forEach
+                    if (box.label == "ic_body") return@forEachIndexed
 
-                    finalBoxes.forEachIndexed { boxIndex, box ->
+                    val wireId = if (box.label == "wire_endpoint") {
+                        endpointWireIds[boxIndex]
+                    } else {
+                        null
+                    }
 
-                        if (box.label == "ic_body") return@forEachIndexed
+                    nodes.add(
+                        Node(
+                            id = nodes.size,
+                            x = (box.left + box.right) / 2f,
+                            y = (box.top + box.bottom) / 2f,
+                            type = box.label,
+                            left = box.left,
+                            top = box.top,
+                            right = box.right,
+                            bottom = box.bottom,
+                            wireId = wireId
+                        )
+                    )
+                }
 
-                        val wireId = if (box.label == "wire_endpoint") {
-                            endpointWireIds[boxIndex]
-                        } else {
-                            null
+// 2️⃣ Assign nearest rail metadata only after all nodes exist
+                val railNodes = nodes.filter { it.type == "pos_rail" || it.type == "neg_rail" }
+
+                nodes.forEach { node ->
+                    if (node.type == "wire_endpoint" && railNodes.isNotEmpty()) {
+                        val nearestRail = railNodes.minByOrNull { rail ->
+                            val dx = node.x - rail.x
+                            val dy = node.y - rail.y
+                            kotlin.math.sqrt(dx * dx + dy * dy)
                         }
 
-                        nodes.add(
-                            Node(
-                                id = nodes.size,
-                                x = (box.left + box.right) / 2f,
-                                y = (box.top + box.bottom) / 2f,
-                                type = box.label,
-                                left = box.left,
-                                top = box.top,
-                                right = box.right,
-                                bottom = box.bottom,
-                                wireId = wireId
-                            )
-                        )
-
-                        nodes.forEach { node ->
-
-                            if (node.type == "wire_endpoint") {
-
-                                // Find nearest rail
-                                val nearestRail = nodes
-                                    .filter { it.type == "pos_rail" || it.type == "neg_rail" }
-                                    .minByOrNull {
-                                        val dx = node.x - it.x
-                                        val dy = node.y - it.y
-                                        kotlin.math.sqrt(dx * dx + dy * dy)
-                                    }
-
-                                if (nearestRail != null) {
-                                    node.metaRailType = nearestRail.type
-                                }
-                            }
+                        if (nearestRail != null) {
+                            node.metaRailType = nearestRail.type
                         }
                     }
                 }

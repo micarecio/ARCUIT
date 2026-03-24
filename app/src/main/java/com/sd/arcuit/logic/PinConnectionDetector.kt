@@ -11,7 +11,10 @@ object PinConnectionDetector {
     data class PinConnection(
         val icId: String,
         val pinIndex: Int,
-        val objectId: String
+        val objectId: String,
+        val objectType: ObjectType,
+        val objectX: Float,
+        val objectY: Float
     )
 
     fun detect(
@@ -40,7 +43,10 @@ object PinConnectionDetector {
                             PinConnection(
                                 icId = ic.id,
                                 pinIndex = pin.index,
-                                objectId = nearest.id
+                                objectId = nearest.id,
+                                objectType = nearest.type,
+                                objectX = (nearest.left + nearest.right) / 2f,
+                                objectY = (nearest.top + nearest.bottom) / 2f
                             )
                         )
                     }

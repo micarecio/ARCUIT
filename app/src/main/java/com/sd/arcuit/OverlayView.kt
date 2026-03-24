@@ -71,6 +71,16 @@ class OverlayView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
+    private val warningPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.YELLOW
+        style = Paint.Style.FILL
+    }
+
+    private val neutralPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.GRAY
+        style = Paint.Style.FILL
+    }
+
     private val correctPathPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.GREEN
         strokeWidth = 6f
@@ -269,10 +279,17 @@ class OverlayView @JvmOverloads constructor(
     private var icLabels: Map<String, String> = emptyMap()
     private var nets: List<Net> = emptyList()
 
+    enum class PinVisualState {
+        RED,
+        YELLOW,
+        GREEN,
+        GRAY
+    }
+
     data class ConnectionMarker(
         val x: Float,
         val y: Float,
-        val isConnected: Boolean
+        val state: PinVisualState
     )
 
     data class GuideSegment(
@@ -305,37 +322,92 @@ class OverlayView @JvmOverloads constructor(
         val newMarkers = mutableListOf<ConnectionMarker>()
         val newSegments = mutableListOf<GuideSegment>()
 
+        val connectedPinsByIc = mutableMapOf<String, MutableSet<Int>>()
+
+        // 🔹 Detect connected pins (ONLY endpoint-based)
         newNets.forEach { net ->
 
             val pins = net.points.filter { it.label.contains(":") }
             val endpoints = net.points.filter { it.label == "wire_endpoint" }
 
-            val hasEndpoint = endpoints.isNotEmpty()
+            if (endpoints.isEmpty()) return@forEach
 
             pins.forEach { pinPoint ->
 
-                if (hasEndpoint) {
-                    newMarkers.add(
-                        ConnectionMarker(
-                            x = pinPoint.x,
-                            y = pinPoint.y,
-                            isConnected = true
+                val parts = pinPoint.label.split(":")
+                if (parts.size != 2) return@forEach
+
+                val icId = parts[0]
+                val pinIndex = parts[1].toIntOrNull() ?: return@forEach
+
+                val nearest = endpoints.minByOrNull {
+                    distance(pinPoint.x, pinPoint.y, it.x, it.y)
+                }
+
+                if (nearest != null && distance(pinPoint.x, pinPoint.y, nearest.x, nearest.y) < 100f) {
+                    connectedPinsByIc.getOrPut(icId) { mutableSetOf() }.add(pinIndex)
+
+                    newSegments.add(
+                        GuideSegment(
+                            startX = pinPoint.x,
+                            startY = pinPoint.y,
+                            endX = nearest.x,
+                            endY = nearest.y,
+                            isCorrect = true
                         )
                     )
+                }
+            }
+        }
 
-                    val pathPoints = buildPathPoints(pinPoint, endpoints, emptyList())
+        // 🔹 Apply gate logic
+        icBodies.forEach { ic ->
 
-                    for (i in 0 until pathPoints.size - 1) {
-                        newSegments.add(
-                            GuideSegment(
-                                startX = pathPoints[i].first,
-                                startY = pathPoints[i].second,
-                                endX = pathPoints[i + 1].first,
-                                endY = pathPoints[i + 1].second,
-                                isCorrect = true
-                            )
+            val icType = icLabels[ic.id] ?: return@forEach
+            val groups = com.sd.arcuit.logic.ICGateGroups.DIP14[icType] ?: return@forEach
+            val connectedPins = connectedPinsByIc[ic.id] ?: emptySet<Int>()
+
+            groups.forEach { group ->
+
+                val inputStatus = group.inputPins.map {
+                    it to (it in connectedPins)
+                }
+
+                val allInputsPresent = inputStatus.all { it.second }
+
+                // INPUTS
+                inputStatus.forEach { (pinIndex, isConnected) ->
+
+                    val pin = ic.pins.firstOrNull { it.index == pinIndex } ?: return@forEach
+
+                    newMarkers.add(
+                        ConnectionMarker(
+                            x = pin.point.x,
+                            y = pin.point.y,
+                            state = if (isConnected) PinVisualState.GREEN else PinVisualState.GRAY
                         )
+                    )
+                }
+
+                // OUTPUT
+                val outputPin = ic.pins.firstOrNull { it.index == group.outputPin }
+
+                if (outputPin != null) {
+                    val outputHasWire = group.outputPin in connectedPins
+
+                    val state = when {
+                        allInputsPresent && outputHasWire -> PinVisualState.GREEN
+                        allInputsPresent && !outputHasWire -> PinVisualState.YELLOW
+                        else -> PinVisualState.RED
                     }
+
+                    newMarkers.add(
+                        ConnectionMarker(
+                            x = outputPin.point.x,
+                            y = outputPin.point.y,
+                            state = state
+                        )
+                    )
                 }
             }
         }
@@ -521,7 +593,12 @@ class OverlayView @JvmOverloads constructor(
 
         // 🔹 connection markers
         connectionMarkers.forEach { marker ->
-            val fillPaint = if (marker.isConnected) connectedPaint else missingPaint
+            val fillPaint = when (marker.state) {
+                PinVisualState.GREEN -> connectedPaint
+                PinVisualState.YELLOW -> warningPaint
+                PinVisualState.RED -> missingPaint
+                PinVisualState.GRAY -> neutralPaint
+            }
             canvas.drawCircle(marker.x, marker.y, 8f, fillPaint)
             canvas.drawCircle(marker.x, marker.y, 10f, pinStrokePaint)
         }
