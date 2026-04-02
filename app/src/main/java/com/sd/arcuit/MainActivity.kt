@@ -21,6 +21,8 @@ import androidx.lifecycle.Lifecycle
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
+import org.opencv.android.OpenCVLoader
+
 import com.sd.arcuit.detector.CircuitDetector
 import com.sd.arcuit.logic.ConnectionPoint
 import com.sd.arcuit.logic.DetectedObject
@@ -64,7 +66,10 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private var lastAnalyzedTime = 0L
-    private val ANALYSIS_INTERVAL_MS = 40L
+    private val ANALYSIS_INTERVAL_MS = 200L
+
+    private var stableWirePairs = mutableMapOf<String, Int>()
+    private val STABLE_WIRE_REQUIRED_FRAMES = 3
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -83,6 +88,12 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         overlayView.listener = this
 
         detector = CircuitDetector(this)
+
+        if (OpenCVLoader.initLocal()) {
+            Log.d("OpenCV", "OpenCV loaded successfully")
+        } else {
+            Log.e("OpenCV", "OpenCV initialization failed")
+        }
 
         // Torch
         val btnTorch = findViewById<FloatingActionButton>(R.id.btnTorch)
@@ -151,64 +162,354 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         }
     }
 
-    private fun assignWireIdsToEndpoints(boxes: List<BoundingBox>): Map<Int, String> {
+    private fun assignWireIdsToEndpoints(
+        boxes: List<BoundingBox>,
+        bitmap: Bitmap
+    ): Map<Int, String> {
 
-        val endpointIndices = boxes.mapIndexedNotNull { index, box ->
-            if (box.label == "wire_endpoint") index else null
-        }.toMutableList()
+        val endpointPairs = boxes.mapIndexedNotNull { index, box ->
+            if (box.label == "wire_endpoint") {
+                index to com.sd.arcuit.logic.WirePathTracer.Endpoint(
+                    id = index,
+                    box = RectF(box.left, box.top, box.right, box.bottom)
+                )
+            } else {
+                null
+            }
+        }
 
-        val result = mutableMapOf<Int, String>()
-        var wireCounter = 1
+        return try {
+            if (endpointPairs.size < 2) return emptyMap()
 
-        while (endpointIndices.size >= 2) {
+            val tracedPairs = com.sd.arcuit.logic.WirePathTracer.findConnectedEndpointPairs(
+                bitmap = bitmap,
+                endpoints = endpointPairs.map { it.second }
 
-            val i = endpointIndices.removeAt(0)
-            val a = boxes[i]
+            )
 
-            val ax = (a.left + a.right) / 2f
-            val ay = (a.top + a.bottom) / 2f
+            fun findNearestFinalIndex(
+                endpoint: com.sd.arcuit.logic.WirePathTracer.Endpoint,
+                excludeIndex: Int? = null
+            ): Int? {
+                val cx = endpoint.box.centerX()
+                val cy = endpoint.box.centerY()
 
-            var bestIndex = -1
-            var bestDist = Float.MAX_VALUE
-            var bestListIndex = -1
+                var bestIndex: Int? = null
+                var bestDist = Float.MAX_VALUE
 
-            for ((listIdx, j) in endpointIndices.withIndex()) {
+                boxes.forEachIndexed { index, box ->
+                    if (box.label != "wire_endpoint") return@forEachIndexed
+                    if (excludeIndex != null && index == excludeIndex) return@forEachIndexed
 
-                val b = boxes[j]
+                    val bx = (box.left + box.right) / 2f
+                    val by = (box.top + box.bottom) / 2f
 
-                val bx = (b.left + b.right) / 2f
-                val by = (b.top + b.bottom) / 2f
+                    val dx = cx - bx
+                    val dy = cy - by
+                    val dist = dx * dx + dy * dy
 
-                val dx = ax - bx
-                val dy = ay - by
-                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        bestIndex = index
+                    }
+                }
 
-                if (dist < bestDist) {
-                    bestDist = dist
-                    bestIndex = j
-                    bestListIndex = listIdx
+                return bestIndex
+            }
+
+            val endpointById = endpointPairs.associate { it.first to it.second }
+
+            val result = mutableMapOf<Int, String>()
+            var wireCounter = 1
+            val currentFramePairs = mutableSetOf<String>()
+
+            val filteredPairs = tracedPairs
+                .filter { it.confidence >= 0.80f }
+                .sortedByDescending { it.confidence }
+
+            filteredPairs.forEach { pair ->
+                val endpointA = endpointById[pair.endpointAId]
+                val endpointB = endpointById[pair.endpointBId]
+
+                if (endpointA != null && endpointB != null) {
+                    val finalA = findNearestFinalIndex(endpointA)
+                    val finalB = findNearestFinalIndex(endpointB, excludeIndex = finalA)
+
+                    if (finalA != null && finalB != null && finalA != finalB) {
+                        val smaller = minOf(finalA!!, finalB!!)
+                        val bigger = maxOf(finalA, finalB)
+                        val pairKey = "$smaller-$bigger"
+
+                        currentFramePairs.add(pairKey)
+
+                        val previousCount = stableWirePairs[pairKey] ?: 0
+                        stableWirePairs[pairKey] = previousCount + 1
+
+                        if ((stableWirePairs[pairKey] ?: 0) >= STABLE_WIRE_REQUIRED_FRAMES) {
+                            val wireId = "wire_$wireCounter"
+                            result[smaller] = wireId
+                            result[bigger] = wireId
+
+                            Log.d(
+                                "WIRE_TRACE",
+                                "STABLE final[$smaller] <-> final[$bigger], color=${pair.colorName}, conf=${pair.confidence}, area=${pair.componentArea}, frames=${stableWirePairs[pairKey]}"
+                            )
+
+                            wireCounter++
+                        } else {
+                            Log.d(
+                                "WIRE_TRACE",
+                                "WAITING final[$smaller] <-> final[$bigger], frames=${stableWirePairs[pairKey]}"
+                            )
+                        }
+                    } else {
+                        Log.d(
+                            "WIRE_TRACE",
+                            "Skipped pair because mapped endpoints are same or null: A=$finalA B=$finalB"
+                        )
+                    }
                 }
             }
 
-            if (bestIndex != -1) {
+            val keysToUpdate = stableWirePairs.keys.toList()
+            keysToUpdate.forEach { key ->
+                if (!currentFramePairs.contains(key)) {
+                    val newCount = (stableWirePairs[key] ?: 0) - 1
+                    if (newCount <= 0) {
+                        stableWirePairs.remove(key)
+                    } else {
+                        stableWirePairs[key] = newCount
+                    }
+                }
+            }
+
+            result
+        } catch (e: Exception) {
+            Log.e("WIRE_TRACE", "assignWireIdsToEndpoints failed", e)
+            emptyMap()
+        }
+    }
+
+    private fun assignWireIdsToEndpointsFromBitmap(
+        endpointPairs: List<Pair<Int, com.sd.arcuit.logic.WirePathTracer.Endpoint>>,
+        finalBoxes: List<BoundingBox>,
+        bitmap: Bitmap
+    ): Map<Int, String> {
+
+        return try {
+            if (endpointPairs.size < 2) return emptyMap()
+
+            val tracedPairs = com.sd.arcuit.logic.WirePathTracer.findConnectedEndpointPairs(
+                bitmap = bitmap,
+                endpoints = endpointPairs.map { it.second }
+            )
+
+            Log.d("WIRE_TRACE", "endpointPairs=${endpointPairs.size}, tracedPairs=${tracedPairs.size}")
+
+            data class CandidatePair(
+                val a: Int,
+                val b: Int,
+                val score: Float,
+                val confidence: Float,
+                val distance: Float,
+                val colorName: String
+            )
+
+            val candidateMap = mutableMapOf<String, CandidatePair>()
+
+            tracedPairs.forEach { pair ->
+
+                val a = pair.endpointAId
+                val b = pair.endpointBId
+
+                if (a == b) return@forEach
+                if (a !in finalBoxes.indices || b !in finalBoxes.indices) return@forEach
+
+                val boxA = finalBoxes[a]
+                val boxB = finalBoxes[b]
+
+                if (boxA.label != "wire_endpoint" || boxB.label != "wire_endpoint") return@forEach
+
+                val centerAx = (boxA.left + boxA.right) / 2f
+                val centerAy = (boxA.top + boxA.bottom) / 2f
+                val centerBx = (boxB.left + boxB.right) / 2f
+                val centerBy = (boxB.top + boxB.bottom) / 2f
+
+                val dx = kotlin.math.abs(centerAx - centerBx)
+                val dy = kotlin.math.abs(centerAy - centerBy)
+                val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                if (distance < 5f || distance > 220f) return@forEach
+
+                val vertical = dx < 35f && dy in 12f..140f
+                val horizontal = dy < 20f && dx in 8f..85f
+                val diagonal = dx in 8f..60f && dy in 8f..110f
+
+                if (!vertical && !horizontal && !diagonal) return@forEach
+
+                val ratio = if (dx > dy) dy / dx else dx / dy
+
+                if (horizontal && ratio > 0.28f) return@forEach
+                if (vertical && ratio > 0.75f) return@forEach
+                if (diagonal && (ratio < 0.28f || ratio > 0.85f)) return@forEach
+
+                val alignmentPenalty = if (vertical) dx else dy
+
+                val score =
+                    pair.confidence * 1000f -
+                            distance * 1.5f -
+                            alignmentPenalty * 10f
+
+                val smaller = minOf(a, b)
+                val bigger = maxOf(a, b)
+                val key = "$smaller-$bigger"
+
+                val candidate = CandidatePair(
+                    a = smaller,
+                    b = bigger,
+                    score = score,
+                    confidence = pair.confidence,
+                    distance = distance,
+                    colorName = pair.colorName
+                )
+
+                val existing = candidateMap[key]
+                if (existing == null || candidate.score > existing.score) {
+                    candidateMap[key] = candidate
+                }
+            }
+
+            val result = mutableMapOf<Int, String>()
+            val usedEndpoints = mutableSetOf<Int>()
+            var wireCounter = 1
+
+            candidateMap.values
+                .sortedByDescending { it.score }
+                .forEach { candidate ->
+
+                    if (candidate.a in usedEndpoints || candidate.b in usedEndpoints) return@forEach
+
+                    val wireId = "wire_$wireCounter"
+                    result[candidate.a] = wireId
+                    result[candidate.b] = wireId
+
+                    usedEndpoints.add(candidate.a)
+                    usedEndpoints.add(candidate.b)
+
+                    Log.d(
+                        "WIRE_TRACE",
+                        "TRACE final[${candidate.a}] <-> final[${candidate.b}] " +
+                                "id=$wireId conf=${candidate.confidence} dist=${candidate.distance} color=${candidate.colorName}"
+                    )
+
+                    wireCounter++
+                }
+
+            data class EndpointInfo(
+                val finalIndex: Int,
+                val x: Float,
+                val y: Float
+            )
+
+            val remaining = endpointPairs
+                .map { (finalIndex, endpoint) ->
+                    EndpointInfo(
+                        finalIndex = finalIndex,
+                        x = endpoint.box.centerX(),
+                        y = endpoint.box.centerY()
+                    )
+                }
+                .filter { it.finalIndex !in usedEndpoints }
+
+            val fallbackUsed = mutableSetOf<Int>()
+
+            for (i in remaining.indices) {
+                if (i in fallbackUsed) continue
+
+                val a = remaining[i]
+
+                var bestJ = -1
+                var bestScore = Float.MAX_VALUE
+
+                for (j in remaining.indices) {
+                    if (i == j) continue
+                    if (j in fallbackUsed) continue
+
+                    val b = remaining[j]
+
+                    val dx = kotlin.math.abs(a.x - b.x)
+                    val dy = kotlin.math.abs(a.y - b.y)
+                    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                    // vertical fallback only
+                    if (dx >= 18f) continue
+                    if (dy < 18f || dy > 120f) continue
+                    if (distance > 130f) continue
+
+                    val score = distance + dx * 8f
+
+                    if (score < bestScore) {
+                        bestScore = score
+                        bestJ = j
+                    }
+                }
+
+                if (bestJ == -1) continue
+                if (bestJ in fallbackUsed) continue
+
+                val b = remaining[bestJ]
+
+                // mutual best check
+                var reverseBest = -1
+                var reverseScore = Float.MAX_VALUE
+
+                for (k in remaining.indices) {
+                    if (k == bestJ) continue
+                    if (k in fallbackUsed && k != i) continue
+
+                    val c = remaining[k]
+
+                    val dx = kotlin.math.abs(b.x - c.x)
+                    val dy = kotlin.math.abs(b.y - c.y)
+                    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                    if (dx >= 18f) continue
+                    if (dy < 18f || dy > 120f) continue
+                    if (distance > 130f) continue
+
+                    val score = distance + dx * 8f
+
+                    if (score < reverseScore) {
+                        reverseScore = score
+                        reverseBest = k
+                    }
+                }
+
+                if (reverseBest != i) continue
 
                 val wireId = "wire_$wireCounter"
+                result[a.finalIndex] = wireId
+                result[b.finalIndex] = wireId
 
-                result[i] = wireId
-                result[bestIndex] = wireId
+                usedEndpoints.add(a.finalIndex)
+                usedEndpoints.add(b.finalIndex)
+                fallbackUsed.add(i)
+                fallbackUsed.add(bestJ)
 
-                endpointIndices.removeAt(bestListIndex)
+                Log.d(
+                    "WIRE_TRACE",
+                    "VERTICAL_FALLBACK final[${a.finalIndex}] <-> final[${b.finalIndex}] id=$wireId"
+                )
 
                 wireCounter++
             }
-        }
 
-        // 🔥 IMPORTANT: NO endpoint should remain unpaired
-        if (endpointIndices.isNotEmpty()) {
-            Log.e("WIRE_DEBUG", "UNPAIRED ENDPOINTS: $endpointIndices")
-        }
+            result
 
-        return result
+        } catch (e: Exception) {
+            Log.e("WIRE_TRACE", "assignWireIdsToEndpointsFromBitmap failed", e)
+            emptyMap()
+        }
     }
 
     private fun startCamera() {
@@ -247,6 +548,23 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 )
 
                 val detections = detector.detect(bitmap)
+
+                val endpointPairs =
+                    detections.mapIndexedNotNull { index, det ->
+                        if (det.label == "wire_endpoint") {
+                            index to com.sd.arcuit.logic.WirePathTracer.Endpoint(
+                                id = index,
+                                box = RectF(
+                                    det.boundingBox.left,
+                                    det.boundingBox.top,
+                                    det.boundingBox.right,
+                                    det.boundingBox.bottom
+                                )
+                            )
+                        } else {
+                            null
+                        }
+                    }
 
                 val viewW = overlayView.width.toFloat()
                 val viewH = overlayView.height.toFloat()
@@ -483,7 +801,59 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 // Detect IC pin connections
 //                val pinConnections = PinConnectionDetector.detect(icBodies, detectedObjects)
 
-                val endpointWireIds = assignWireIdsToEndpoints(finalBoxes)
+                val endpointWireIds = assignWireIdsToEndpointsFromBitmap(
+                    endpointPairs = endpointPairs,
+                    finalBoxes = finalBoxes,
+                    bitmap = bitmap
+                )
+
+                val wireEndpointSegments = mutableListOf<OverlayView.WireEndpointSegment>()
+
+                val endpointsByWireId = mutableMapOf<String, MutableList<BoundingBox>>()
+
+                finalBoxes.forEachIndexed { index, box ->
+                    if (box.label == "wire_endpoint") {
+                        val wireId = endpointWireIds[index]
+                        if (wireId != null) {
+                            endpointsByWireId.getOrPut(wireId) { mutableListOf() }.add(box)
+                        }
+                    }
+                }
+
+                endpointsByWireId.forEach { (_, endpointBoxes) ->
+
+                    val spreadX = endpointBoxes.maxOf { it.left } - endpointBoxes.minOf { it.left }
+                    val spreadY = endpointBoxes.maxOf { it.top } - endpointBoxes.minOf { it.top }
+
+                    val sorted = if (spreadX > spreadY) {
+                        endpointBoxes.sortedBy { it.left }
+                    } else {
+                        endpointBoxes.sortedBy { it.top }
+                    }
+
+                    for (i in 0 until sorted.size - 1) {
+
+                        val a = sorted[i]
+                        val b = sorted[i + 1]
+
+                        val ax = (a.left + a.right) / 2f
+                        val ay = (a.top + a.bottom) / 2f
+                        val bx = (b.left + b.right) / 2f
+                        val by = (b.top + b.bottom) / 2f
+
+                        wireEndpointSegments.add(
+                            OverlayView.WireEndpointSegment(
+                                startX = ax,
+                                startY = ay,
+                                endX = bx,
+                                endY = by,
+                                color = Color.CYAN
+                            )
+                        )
+                    }
+                }
+
+                overlayView.setWireEndpointSegments(wireEndpointSegments)
 
 // Build electrical nets
                 val nodes = mutableListOf<Node>()

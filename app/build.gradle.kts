@@ -39,6 +39,8 @@ android {
 
 dependencies {
 
+    implementation("org.opencv:opencv:4.12.0")
+
     // CameraX
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")

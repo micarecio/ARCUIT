@@ -300,8 +300,17 @@ class OverlayView @JvmOverloads constructor(
         val isCorrect: Boolean
     )
 
+    data class WireEndpointSegment(
+        val startX: Float,
+        val startY: Float,
+        val endX: Float,
+        val endY: Float,
+        val color: Int
+    )
+
     private var connectionMarkers: List<ConnectionMarker> = emptyList()
     private var guideSegments: List<GuideSegment> = emptyList()
+    private var wireEndpointSegments: List<WireEndpointSegment> = emptyList()
 
     var listener: ICClickListener? = null
 
@@ -313,6 +322,11 @@ class OverlayView @JvmOverloads constructor(
         boxes = newBoxes
         icBodies = newICs
         icLabels = labels
+        postInvalidateOnAnimation()
+    }
+
+    fun setWireEndpointSegments(newSegments: List<WireEndpointSegment>) {
+        wireEndpointSegments = newSegments
         postInvalidateOnAnimation()
     }
 
@@ -374,6 +388,7 @@ class OverlayView @JvmOverloads constructor(
                 )
             )
         }
+
 
         // 🔹 Apply gate logic
         icBodies.forEach { ic ->
@@ -495,6 +510,22 @@ class OverlayView @JvmOverloads constructor(
             val offset = (gateTextPaint.descent() + gateTextPaint.ascent()) / 2f
 
             canvas.drawText(label, cx, cy - offset, gateTextPaint)
+        }
+
+        wireEndpointSegments.forEach { segment ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = segment.color
+                strokeWidth = 8f
+                style = Paint.Style.STROKE
+            }
+
+            canvas.drawLine(
+                segment.startX,
+                segment.startY,
+                segment.endX,
+                segment.endY,
+                paint
+            )
         }
     }
 
@@ -637,6 +668,22 @@ class OverlayView @JvmOverloads constructor(
             }
             canvas.drawCircle(marker.x, marker.y, 8f, fillPaint)
             canvas.drawCircle(marker.x, marker.y, 10f, pinStrokePaint)
+        }
+
+        wireEndpointSegments.forEach { segment ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = segment.color
+                strokeWidth = 8f
+                style = Paint.Style.STROKE
+            }
+
+            canvas.drawLine(
+                segment.startX,
+                segment.startY,
+                segment.endX,
+                segment.endY,
+                paint
+            )
         }
     }
 
