@@ -12,6 +12,7 @@ import com.sd.arcuit.logic.ICPin
 import com.sd.arcuit.logic.Net
 import kotlin.math.pow
 import kotlin.math.sqrt
+import com.sd.arcuit.logic.TruthTables
 
 class OverlayView @JvmOverloads constructor(
     context: Context,
@@ -33,6 +34,35 @@ class OverlayView @JvmOverloads constructor(
 
     val currentLayerPublic: Layer
         get() = currentLayer
+
+    private val tableBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(170, 0, 0, 0)
+        style = Paint.Style.FILL
+    }
+
+    private val tableBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.CYAN
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+
+    private val tableHeaderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.CYAN
+        textSize = 30f
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
+    }
+
+    private val tableCellPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 28f
+        textAlign = Paint.Align.CENTER
+    }
+
+    private val tableLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(180, 255, 255, 255)
+        strokeWidth = 2f
+    }
 
     private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -103,6 +133,18 @@ class OverlayView @JvmOverloads constructor(
         color = Color.WHITE
         style = Paint.Style.FILL
         alpha = 180
+    }
+
+    private val guideTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 28f
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+
+    private val guideBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(140, 0, 0, 0)
+        style = Paint.Style.FILL
     }
 
     private val ic7400Bitmap: Bitmap by lazy {
@@ -273,7 +315,6 @@ class OverlayView @JvmOverloads constructor(
         BitmapFactory.decodeResource(resources, R.drawable.ic_747266)
     }
 
-
     private var boxes: List<BoundingBox> = emptyList()
     private var icBodies: List<ICComponent> = emptyList()
     private var icLabels: Map<String, String> = emptyMap()
@@ -324,9 +365,7 @@ class OverlayView @JvmOverloads constructor(
 
         val connectedPinsByIc = mutableMapOf<String, MutableSet<Int>>()
 
-        // 🔹 Detect connected pins (ONLY endpoint-based)
         val detectedObjects = boxes.mapIndexedNotNull { index, box ->
-
             val mappedType = when (box.label) {
                 "ic_body" -> com.sd.arcuit.logic.ObjectType.IC_BODY
                 "wire_endpoint" -> com.sd.arcuit.logic.ObjectType.WIRE_ENDPOINT
@@ -356,7 +395,6 @@ class OverlayView @JvmOverloads constructor(
         val connections = com.sd.arcuit.logic.PinConnectionDetector.detect(icBodies, detectedObjects)
 
         connections.forEach { conn ->
-
             connectedPinsByIc
                 .getOrPut(conn.icId) { mutableSetOf() }
                 .add(conn.pinIndex)
@@ -375,19 +413,15 @@ class OverlayView @JvmOverloads constructor(
             )
         }
 
-        // 🔹 Apply gate logic
         icBodies.forEach { ic ->
-
             val icType = icLabels[ic.id] ?: return@forEach
             val groups = com.sd.arcuit.logic.ICGateGroups.DIP14[icType] ?: return@forEach
-            val connectedPins = connectedPinsByIc[ic.id] ?: emptySet<Int>()
+            val connectedPins = connectedPinsByIc[ic.id] ?: emptySet()
 
             ic.pins.forEach { pin ->
-
                 when (pin.role) {
                     com.sd.arcuit.logic.PinRole.VCC,
                     com.sd.arcuit.logic.PinRole.GND -> {
-
                         val isConnected = pin.index in connectedPins
 
                         newMarkers.add(
@@ -398,22 +432,18 @@ class OverlayView @JvmOverloads constructor(
                             )
                         )
                     }
-
                     else -> Unit
                 }
             }
 
             groups.forEach { group ->
-
                 val inputStatus = group.inputPins.map {
                     it to (it in connectedPins)
                 }
 
                 val allInputsPresent = inputStatus.all { it.second }
 
-                // INPUTS
                 inputStatus.forEach { (pinIndex, isConnected) ->
-
                     val pin = ic.pins.firstOrNull { it.index == pinIndex } ?: return@forEach
 
                     newMarkers.add(
@@ -425,7 +455,6 @@ class OverlayView @JvmOverloads constructor(
                     )
                 }
 
-                // OUTPUT
                 val outputPin = ic.pins.firstOrNull { it.index == group.outputPin }
 
                 if (outputPin != null) {
@@ -466,7 +495,11 @@ class OverlayView @JvmOverloads constructor(
 
     private fun drawBoundingBoxes(canvas: Canvas) {
         for (box in boxes) {
-            boxPaint.color = box.color
+            if (box.label == "ic_body") {
+                boxPaint.color = Color.WHITE
+            } else {
+                boxPaint.color = box.color
+            }
 
             if (box.label.endsWith("_endpoint")) {
                 val cx = (box.left + box.right) / 2f
@@ -488,13 +521,17 @@ class OverlayView @JvmOverloads constructor(
         }
 
         for (ic in icBodies) {
-            val label = icLabels[ic.id] ?: continue
+            val label = icLabels[ic.id]
+            val box = ic.boundingBox
 
-            val cx = ic.boundingBox.centerX()
-            val cy = ic.boundingBox.centerY()
-            val offset = (gateTextPaint.descent() + gateTextPaint.ascent()) / 2f
-
-            canvas.drawText(label, cx, cy - offset, gateTextPaint)
+            if (label != null) {
+                val cx = box.centerX()
+                val cy = box.centerY()
+                val offset = (gateTextPaint.descent() + gateTextPaint.ascent()) / 2f
+                canvas.drawText(label, cx, cy - offset, gateTextPaint)
+            } else {
+                drawGuideTextInsideBox(canvas, box, "Click to select IC")
+            }
         }
     }
 
@@ -507,14 +544,18 @@ class OverlayView @JvmOverloads constructor(
 
             canvas.drawRect(ic.boundingBox, neonPaint)
 
-            val label = icLabels[ic.id] ?: "IC"
+            val label = icLabels[ic.id]
 
-            canvas.drawText(
-                label,
-                ic.boundingBox.left,
-                ic.boundingBox.top - 10f,
-                textPaint
-            )
+            if (label != null) {
+                canvas.drawText(
+                    label,
+                    ic.boundingBox.left,
+                    ic.boundingBox.top - 10f,
+                    textPaint
+                )
+            } else {
+                drawGuideTextInsideBox(canvas, ic.boundingBox, "Click to select IC")
+            }
 
             ic.pins.forEach { pin: ICPin ->
                 neonPaint.style = Paint.Style.FILL
@@ -529,7 +570,7 @@ class OverlayView @JvmOverloads constructor(
     private fun drawCircuitDiagram(canvas: Canvas) {
         icBodies.forEach { ic ->
             val box = ic.boundingBox
-            val label = icLabels[ic.id] ?: "IC"
+            val label = icLabels[ic.id]
 
             val selectedBitmap = when (label) {
                 "7400" -> ic7400Bitmap
@@ -574,7 +615,7 @@ class OverlayView @JvmOverloads constructor(
                 "747002" -> ic747002Bitmap
                 "747032" -> ic747032Bitmap
                 "747266" -> ic747266Bitmap
-                  else -> null
+                else -> null
             }
 
             if (selectedBitmap != null) {
@@ -602,20 +643,21 @@ class OverlayView @JvmOverloads constructor(
                 canvas.restoreToCount(saveCount)
             }
 
-            // 🔥 ALWAYS DRAW BOUNDING BOX (on top)
-            boxPaint.color = Color.YELLOW
+            boxPaint.color = Color.WHITE
             boxPaint.style = Paint.Style.STROKE
             boxPaint.strokeWidth = 4f
             canvas.drawRect(box, boxPaint)
 
-            // 🔹 pins (still visible)
+            if (label == null) {
+                drawGuideTextInsideBox(canvas, box, "Click to select IC")
+            }
+
             ic.pins.forEach { pin ->
                 canvas.drawCircle(pin.point.x, pin.point.y, 4f, basePinPaint)
                 canvas.drawCircle(pin.point.x, pin.point.y, 6f, pinStrokePaint)
             }
         }
 
-        // 🔹 wires
         guideSegments.forEach { segment ->
             val paint = if (segment.isCorrect) correctPathPaint else wrongPathPaint
             canvas.drawLine(
@@ -627,7 +669,6 @@ class OverlayView @JvmOverloads constructor(
             )
         }
 
-        // 🔹 connection markers
         connectionMarkers.forEach { marker ->
             val fillPaint = when (marker.state) {
                 PinVisualState.GREEN -> connectedPaint
@@ -638,6 +679,125 @@ class OverlayView @JvmOverloads constructor(
             canvas.drawCircle(marker.x, marker.y, 8f, fillPaint)
             canvas.drawCircle(marker.x, marker.y, 10f, pinStrokePaint)
         }
+    }
+
+    private fun drawTruthTables(canvas: Canvas) {
+        val selectedCodes = icLabels.values.distinct()
+        if (selectedCodes.isEmpty()) return
+
+        val tables = selectedCodes.mapNotNull { TruthTables.get(it) }
+        if (tables.isEmpty()) return
+
+        val panelLeft = 20f
+        var panelTop = 120f
+        val panelWidth = 260f
+        val rowHeight = 42f
+        val titleGap = 36f
+        val sectionGap = 26f
+
+        tables.forEach { table ->
+            val totalRows = 1 + table.rows.size
+            val tableHeight = titleGap + (totalRows * rowHeight) + 20f
+
+            val rect = RectF(
+                panelLeft,
+                panelTop,
+                panelLeft + panelWidth,
+                panelTop + tableHeight
+            )
+
+            canvas.drawRoundRect(rect, 18f, 18f, tableBgPaint)
+            canvas.drawRoundRect(rect, 18f, 18f, tableBorderPaint)
+
+            canvas.drawText(
+                table.title,
+                rect.centerX(),
+                rect.top + 30f,
+                tableHeaderPaint
+            )
+
+            val colCount = table.headers.size
+            val colWidth = panelWidth / colCount
+            val tableStartY = rect.top + titleGap
+
+            // header row
+            table.headers.forEachIndexed { index, header ->
+                val cx = rect.left + colWidth * index + colWidth / 2f
+                val cy = tableStartY + 28f
+                canvas.drawText(header, cx, cy, tableHeaderPaint)
+            }
+
+            // horizontal line below header
+            canvas.drawLine(
+                rect.left,
+                tableStartY + rowHeight,
+                rect.right,
+                tableStartY + rowHeight,
+                tableLinePaint
+            )
+
+            // vertical lines
+            for (i in 1 until colCount) {
+                val x = rect.left + colWidth * i
+                canvas.drawLine(
+                    x,
+                    tableStartY,
+                    x,
+                    tableStartY + rowHeight * totalRows,
+                    tableLinePaint
+                )
+            }
+
+            // data rows
+            table.rows.forEachIndexed { rowIndex, row ->
+                val rowTop = tableStartY + rowHeight * (rowIndex + 1)
+                val values = row.inputs + row.output
+
+                values.forEachIndexed { colIndex, value ->
+                    val cx = rect.left + colWidth * colIndex + colWidth / 2f
+                    val cy = rowTop + 28f
+                    canvas.drawText(value, cx, cy, tableCellPaint)
+                }
+
+                canvas.drawLine(
+                    rect.left,
+                    rowTop + rowHeight,
+                    rect.right,
+                    rowTop + rowHeight,
+                    tableLinePaint
+                )
+            }
+
+            panelTop += tableHeight + sectionGap
+        }
+    }
+
+    private fun drawGuideTextInsideBox(canvas: Canvas, box: RectF, text: String) {
+        val availableWidth = box.width() - 24f
+        val finalTextPaint = Paint(guideTextPaint)
+
+        while (finalTextPaint.measureText(text) > availableWidth && finalTextPaint.textSize > 18f) {
+            finalTextPaint.textSize -= 2f
+        }
+
+        val cx = box.centerX()
+        val cy = box.centerY()
+        val baseline = cy - (finalTextPaint.descent() + finalTextPaint.ascent()) / 2f
+
+        val textWidth = finalTextPaint.measureText(text)
+        val textHeight = finalTextPaint.textSize
+        val paddingX = 18f
+        val paddingY = 12f
+
+        val rect = RectF(
+            cx - textWidth / 2f - paddingX,
+            cy - textHeight / 2f - paddingY,
+            cx + textWidth / 2f + paddingX,
+            cy + textHeight / 2f + paddingY
+        )
+
+        canvas.drawRoundRect(rect, 14f, 14f, guideBgPaint)
+        canvas.drawText(text, cx, baseline, finalTextPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

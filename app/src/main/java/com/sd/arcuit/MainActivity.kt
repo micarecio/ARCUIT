@@ -11,7 +11,6 @@ import android.util.Log
 import android.widget.Button
 
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -19,6 +18,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 
+import android.view.animation.DecelerateInterpolator
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 import com.sd.arcuit.detector.CircuitDetector
@@ -33,8 +33,16 @@ import com.sd.arcuit.logic.ObjectType
 import com.sd.arcuit.logic.PinRole
 import com.sd.arcuit.logic.Node
 
+import android.graphics.Typeface
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.google.android.material.card.MaterialCardView
+
 import android.view.ScaleGestureDetector
 import android.view.MotionEvent
+import com.sd.arcuit.logic.TruthTables
 
 import com.sd.arcuit.util.toBitmap
 
@@ -52,8 +60,24 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
     private var minZoomRatio = 1.0f
     private var maxZoomRatio = 1.0f
 
+    private lateinit var btnTorch: FloatingActionButton
+
     private lateinit var btnDetection: FloatingActionButton
     private lateinit var btnCircuit: FloatingActionButton
+
+    private lateinit var icSelectorOverlay: FrameLayout
+    private lateinit var icSelectorCard: MaterialCardView
+    private lateinit var txtIcSelectorTitle: TextView
+    private lateinit var gateButtonContainer: LinearLayout
+    private lateinit var icModelButtonContainer: LinearLayout
+
+    private lateinit var btnTruthTable: FloatingActionButton
+    private lateinit var truthTableOverlay: FrameLayout
+    private lateinit var txtTruthTitle: TextView
+    private lateinit var txtTruthContent: TextView
+    private lateinit var truthTablePanelScroll: View
+
+    private var activeIc: ICComponent? = null
 
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
@@ -76,7 +100,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         setContentView(R.layout.activity_main)
 
         previewView = findViewById(R.id.previewView)
-        previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
+        previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
         setupPinchToZoom()
 
         overlayView = findViewById(R.id.overlayView)
@@ -85,8 +109,15 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
         detector = CircuitDetector(this)
 
         // Torch
-        val btnTorch = findViewById<FloatingActionButton>(R.id.btnTorch)
-        btnTorch.setOnClickListener { toggleTorch() }
+        btnTorch = findViewById(R.id.btnTorch)
+        setTorchButtonActive(false)
+
+        btnTorch.setOnClickListener {
+            torchEnabled = !torchEnabled
+            camera?.cameraControl?.enableTorch(torchEnabled)
+
+            setTorchButtonActive(torchEnabled)
+        }
 
         // Camera permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -107,7 +138,53 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
             overlayView.setLayer(OverlayView.Layer.CIRCUIT_DIAGRAM)
             highlightButton(btnCircuit)
         }
+
+        icSelectorOverlay = findViewById(R.id.icSelectorOverlay)
+        icSelectorCard = findViewById(R.id.icSelectorCard)
+        txtIcSelectorTitle = findViewById(R.id.txtIcSelectorTitle)
+        gateButtonContainer = findViewById(R.id.gateButtonContainer)
+        icModelButtonContainer = findViewById(R.id.icModelButtonContainer)
+
+        icSelectorCard.setOnClickListener {
+            // prevents closing when clicking inside the card
+        }
+
+        icSelectorOverlay.setOnClickListener {
+            hideIcSelectorWithAnimation()
+        }
+
+        btnTruthTable = findViewById(R.id.btnTruthTable)
+
+        btnTruthTable.backgroundTintList = null
+        btnTruthTable.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#1A1A1A")))
+        btnTruthTable.imageTintList = ColorStateList.valueOf(Color.WHITE)
+
+        truthTableOverlay = findViewById(R.id.truthTableOverlay)
+        truthTablePanelScroll = findViewById(R.id.truthTablePanelScroll)
+        txtTruthTitle = findViewById(R.id.txtTruthTitle)
+        txtTruthContent = findViewById(R.id.txtTruthContent)
+
+        btnTruthTable.setOnClickListener {
+            val didShow = showTruthTableOverlay()
+            setTruthButtonActive(didShow)
+        }
+
+        truthTableOverlay.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                hideTruthTableWithAnimation()
+            }
+            true
+        }
+
+        val truthTablePanel = findViewById<View>(R.id.truthTablePanel)
+        truthTablePanel?.setOnClickListener {
+            // prevent closing when clicking panel itself
+        }
+
+        overlayView.setLayer(OverlayView.Layer.CIRCUIT_DIAGRAM)
+        highlightButton(btnCircuit)
     }
+
 
     private fun setupPinchToZoom() {
         val scaleGestureDetector = ScaleGestureDetector(
@@ -132,22 +209,86 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
     }
 
     private fun highlightButton(activeButton: FloatingActionButton) {
-        val buttons = listOf(btnDetection, btnCircuit)
+        val buttons = listOf(btnDetection, btnCircuit, btnTruthTable)
 
         buttons.forEach { btn ->
-            if (btn == activeButton) {
-                btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00FFCC"))
-                btn.imageTintList = ColorStateList.valueOf(Color.BLACK)
-                btn.alpha = 1f
-                btn.scaleX = 1.15f
-                btn.scaleY = 1.15f
-            } else {
-                btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1A1A1A"))
-                btn.imageTintList = ColorStateList.valueOf(Color.WHITE)
-                btn.alpha = 0.6f
-                btn.scaleX = 1f
-                btn.scaleY = 1f
+            val isActive = btn == activeButton
+
+            btn.backgroundTintList = null
+            btn.setBackgroundTintList(
+                ColorStateList.valueOf(
+                    if (isActive) Color.CYAN else Color.parseColor("#1A1A1A")
+                )
+            )
+
+            btn.imageTintList = ColorStateList.valueOf(
+                if (isActive) Color.BLACK else Color.WHITE
+            )
+
+            btn.alpha = if (isActive) 1f else 0.6f
+
+            applyGlow(btn, isActive)
+        }
+    }
+
+    private fun setTorchButtonActive(isActive: Boolean) {
+
+        btnTorch.backgroundTintList = null
+        btnTorch.backgroundTintList = ColorStateList.valueOf(
+            if (isActive) Color.CYAN else Color.parseColor("#1A1A1A")
+        )
+
+        btnTorch.imageTintList = ColorStateList.valueOf(
+            if (isActive) Color.BLACK else Color.WHITE
+        )
+
+        btnTorch.alpha = if (isActive) 1f else 0.6f
+
+        btnTorch.setImageResource(
+            if (isActive) R.drawable.ic_flash_on else R.drawable.ic_flash_off
+        )
+
+        applyGlow(btnTorch, isActive)
+    }
+
+    private fun setTruthButtonActive(isActive: Boolean) {
+
+        btnTruthTable.backgroundTintList = null
+        btnTruthTable.setBackgroundTintList(
+            ColorStateList.valueOf(
+                if (isActive) Color.CYAN else Color.parseColor("#1A1A1A")
+            )
+        )
+
+        btnTruthTable.imageTintList = ColorStateList.valueOf(
+            if (isActive) Color.BLACK else Color.WHITE
+        )
+
+        btnTruthTable.alpha = if (isActive) 1f else 0.6f
+
+        applyGlow(btnTruthTable, isActive)
+    }
+
+    private fun applyGlow(btn: FloatingActionButton, isActive: Boolean) {
+        if (isActive) {
+            btn.elevation = 30f
+            btn.translationZ = 30f
+
+            btn.scaleX = 1.18f
+            btn.scaleY = 1.18f
+
+            // Optional stronger glow (API 28+)
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                btn.outlineSpotShadowColor = Color.CYAN
+                btn.outlineAmbientShadowColor = Color.CYAN
             }
+
+        } else {
+            btn.elevation = 12f
+            btn.translationZ = 12f
+
+            btn.scaleX = 1f
+            btn.scaleY = 1f
         }
     }
 
@@ -219,11 +360,16 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
             cameraProvider = providerFuture.get()
 
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
-            }
+            val preview = Preview.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setTargetRotation(previewView.display.rotation)
+                .build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
 
             val analysis = ImageAnalysis.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setTargetRotation(previewView.display.rotation)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
 
@@ -253,7 +399,7 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                 val imgW = bitmap.width.toFloat()
                 val imgH = bitmap.height.toFloat()
 
-                val scale = minOf(viewW / imgW, viewH / imgH)
+                val scale = maxOf(viewW / imgW, viewH / imgH)
                 val dx = (viewW - imgW * scale) / 2f
                 val dy = (viewH - imgH * scale) / 2f
 
@@ -606,39 +752,158 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
             camera?.cameraInfo?.zoomState?.value?.let { zoomState ->
                 minZoomRatio = zoomState.minZoomRatio
                 maxZoomRatio = zoomState.maxZoomRatio
-                currentZoomRatio = 2.0f.coerceIn(minZoomRatio, maxZoomRatio)
+                currentZoomRatio = minZoomRatio
                 camera?.cameraControl?.setZoomRatio(currentZoomRatio)
             }
 
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun toggleTorch() {
-        torchEnabled = !torchEnabled
-        camera?.cameraControl?.enableTorch(torchEnabled)
+    private fun showTruthTableOverlay(): Boolean {
+        val selectedCodes = icLabels.values.distinct()
 
-        val btn = findViewById<FloatingActionButton>(R.id.btnTorch)
-
-        if (torchEnabled) {
-            btn.setImageResource(R.drawable.ic_flash_on)
-            btn.backgroundTintList =
-                ColorStateList.valueOf(Color.parseColor("#00FFCC"))
-            btn.elevation = 24f
-
-            // Smooth neon scale animation
-            btn.animate()
-                .scaleX(1.2f)
-                .scaleY(1.2f)
-                .setDuration(150)
-                .withEndAction {
-                    btn.animate().scaleX(1f).scaleY(1f).duration = 150
-                }
-        } else {
-            btn.setImageResource(R.drawable.ic_flash_off)
-            btn.backgroundTintList =
-                ColorStateList.valueOf(Color.parseColor("#1A1A1A"))
-            btn.elevation = 12f
+        if (selectedCodes.isEmpty()) {
+            truthTableOverlay.visibility = View.GONE
+            return false
         }
+
+        val tables = selectedCodes.mapNotNull { TruthTables.get(it) }
+
+        if (tables.isEmpty()) {
+            truthTableOverlay.visibility = View.GONE
+            return false
+        }
+
+        txtTruthTitle.text = if (tables.size == 1) {
+            tables.first().title
+        } else {
+            "Truth Tables"
+        }
+
+        val content = buildString {
+            tables.forEachIndexed { tableIndex, table ->
+                append(table.title).append("\n\n")
+
+                append(table.headers.joinToString("   "))
+                append("\n")
+                append("-".repeat(table.headers.size * 4 + 4))
+                append("\n")
+
+                table.rows.forEach { row ->
+                    val values = row.inputs + row.output
+                    append(values.joinToString("   "))
+                    append("\n")
+                }
+
+                if (tableIndex != tables.lastIndex) {
+                    append("\n\n")
+                }
+            }
+        }
+
+        txtTruthContent.text = content
+        showTruthTableWithAnimation()
+        return true
+    }
+
+    private fun showTruthTableWithAnimation() {
+        truthTableOverlay.visibility = View.VISIBLE
+
+        truthTablePanelScroll.post {
+            truthTablePanelScroll.translationX = -truthTablePanelScroll.width.toFloat()
+            truthTablePanelScroll.alpha = 0f
+
+            truthTablePanelScroll.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(260)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }
+    }
+
+    private fun hideTruthTableWithAnimation() {
+        truthTablePanelScroll.animate()
+            .translationX(-truthTablePanelScroll.width.toFloat())
+            .alpha(0f)
+            .setDuration(220)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                truthTableOverlay.visibility = View.GONE
+                truthTablePanelScroll.translationX = 0f
+                truthTablePanelScroll.alpha = 1f
+                setTruthButtonActive(false)
+            }
+            .start()
+    }
+
+    private fun positionIcSelectorNearIc(ic: ICComponent) {
+        icSelectorCard.post {
+            val cardWidth = icSelectorCard.width.toFloat()
+            val cardHeight = icSelectorCard.height.toFloat()
+
+            val screenWidth = icSelectorOverlay.width.toFloat()
+            val screenHeight = icSelectorOverlay.height.toFloat()
+
+            val margin = 20f
+            val buttonPanelReservedWidth = 110f
+
+            val icBox = ic.boundingBox
+
+            var targetX = icBox.right + 16f
+            var targetY = icBox.top
+
+            // If too close to right edge, place it to the left of the IC
+            if (targetX + cardWidth > screenWidth - buttonPanelReservedWidth - margin) {
+                targetX = icBox.left - cardWidth - 16f
+            }
+
+            // Clamp horizontally
+            if (targetX < margin) targetX = margin
+            if (targetX + cardWidth > screenWidth - margin) {
+                targetX = screenWidth - cardWidth - margin
+            }
+
+            // Clamp vertically
+            if (targetY < margin) targetY = margin
+            if (targetY + cardHeight > screenHeight - margin) {
+                targetY = screenHeight - cardHeight - margin
+            }
+
+            icSelectorCard.x = targetX
+            icSelectorCard.y = targetY
+        }
+    }
+
+    private fun showIcSelectorWithAnimation(ic: ICComponent) {
+        icSelectorOverlay.visibility = View.VISIBLE
+        positionIcSelectorNearIc(ic)
+
+        icSelectorCard.post {
+            icSelectorCard.translationX = -80f
+            icSelectorCard.alpha = 0f
+
+            icSelectorCard.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(260)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }
+    }
+
+    private fun hideIcSelectorWithAnimation() {
+        icSelectorCard.animate()
+            .translationX(-icSelectorCard.width.toFloat())
+            .alpha(0f)
+            .setDuration(220)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                icSelectorOverlay.visibility = View.GONE
+                icSelectorCard.translationX = 0f
+                icSelectorCard.alpha = 1f
+            }
+            .start()
     }
 
     override fun onDestroy() {
@@ -649,108 +914,67 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
     override fun onICClicked(ic: ICComponent) {
         if (ic.id in icLabels) {
-            AlertDialog.Builder(this)
-                .setTitle("Remove Gate?")
-                .setPositiveButton("Remove") { _, _ ->
-                    icLabels.remove(ic.id)
-                    overlayView.postInvalidateOnAnimation()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+            icLabels.remove(ic.id)
+            activeIc = null
+            icSelectorOverlay.visibility = View.GONE
+            overlayView.postInvalidateOnAnimation()
             return
         }
 
-        val gateTypes = arrayOf("NOT", "AND", "OR", "NAND", "NOR", "XOR", "XNOR")
-
-        AlertDialog.Builder(this)
-            .setTitle("Select Gate Type")
-            .setItems(gateTypes) { _, which ->
-                showICOptions(ic, gateTypes[which])
-            }
-            .show()
-
+        activeIc = ic
+        truthTableOverlay.visibility = View.GONE
+        showGateButtons()
+        showIcSelectorWithAnimation(ic)
     }
 
-    private fun showICOptions(ic: ICComponent, gate: String) {
+    private fun showGateButtons() {
+        val gates = listOf("NOT", "AND", "OR", "NAND", "NOR", "XOR", "XNOR")
 
+        gateButtonContainer.removeAllViews()
+        icModelButtonContainer.removeAllViews()
+
+        gates.forEach { gate ->
+            val btn = Button(this)
+            btn.text = gate
+            btn.setTextColor(Color.WHITE)
+            btn.setBackgroundColor(Color.parseColor("#222222"))
+
+            btn.setOnClickListener {
+                showICModels(gate)
+            }
+
+            gateButtonContainer.addView(btn)
+        }
+    }
+
+    private fun showICModels(gate: String) {
         val options = when (gate) {
-
-            "NOT" -> arrayOf(
-                "7404 – NOT",
-                "7405 – NOT (OC)",
-                "7406 – NOT (OC)",
-                "7414 – Schmitt NOT"
-            )
-
-            "AND" -> arrayOf(
-                "7408 – 2 Inputs",
-                "7409 – 2 Inputs (OC)",
-                "7411 – 3 Inputs",
-                "7421 – 4 Inputs",
-                "7422 – 4 Inputs",
-                "7440 – 4 Inputs",
-                "747001 – Schmitt AND"
-            )
-
-            "OR" -> arrayOf(
-                "7432 – 2 Inputs",
-                "747032 – OR"
-            )
-
-            "NAND" -> arrayOf(
-                "7400 – 2 Inputs",
-                "7401 – 2 Inputs (OC)",
-                "7403 – 2 Inputs (OC)",
-                "7410 – 3 Inputs",
-                "7412 – 3 Inputs (OC)",
-                "7413 – 4 Inputs Schmitt",
-                "7420 – 4 Inputs",
-                "7424 – Schmitt NAND",
-                "7426 – OC NAND",
-                "7430 – 8 Inputs",
-                "7437 – NAND",
-                "7438 – NAND (OC)",
-                "74132 – Schmitt NAND",
-                "74136 – Schmitt NAND"
-            )
-
-            "NOR" -> arrayOf(
-                "7402 – 2 Inputs",
-                "7425 – 4 Inputs",
-                "7427 – 3 Inputs",
-                "7428 – 2 Inputs",
-                "7433 – NOR (OC)",
-                "747002 – Schmitt NOR"
-            )
-
-            "XOR" -> arrayOf(
-                "7486 – 2 Inputs"
-            )
-
-            "XNOR" -> arrayOf(
-                "74266 – 2 Inputs",
-                "747266 – XNOR"
-            )
-
-            else -> emptyArray()
+            "NOT" -> listOf("7404", "7405", "7406", "7414")
+            "AND" -> listOf("7408", "7411", "7421")
+            "OR" -> listOf("7432")
+            "NAND" -> listOf("7400", "7410", "7420", "7430")
+            "NOR" -> listOf("7402", "7427")
+            "XOR" -> listOf("7486")
+            "XNOR" -> listOf("74266")
+            else -> emptyList()
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Select IC Model")
-            .setItems(options) { _, which ->
+        icModelButtonContainer.removeAllViews()
 
-                // 🔥 safer extraction (no crash)
-                val icCode = options[which].substringBefore(" ")
+        options.forEach { icCode ->
+            val btn = Button(this)
+            btn.text = icCode
+            btn.setTextColor(Color.CYAN)
 
-                icLabels[ic.id] = icCode
-
-                Log.d("IC_SELECTED", "IC ${ic.id} -> $icCode")
-
-                // 🔥 (optional but recommended)
-                // refreshCircuitAnalysis()
-
-                overlayView.postInvalidateOnAnimation()
+            btn.setOnClickListener {
+                activeIc?.let {
+                    icLabels[it.id] = icCode
+                    overlayView.postInvalidateOnAnimation()
+                    hideIcSelectorWithAnimation()
+                }
             }
-            .show()
+
+            icModelButtonContainer.addView(btn)
+        }
     }
 }
