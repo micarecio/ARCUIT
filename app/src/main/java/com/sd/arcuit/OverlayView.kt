@@ -1,8 +1,14 @@
 package com.sd.arcuit
 
 import android.content.Context
-import android.graphics.*
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -10,6 +16,8 @@ import com.sd.arcuit.logic.ConnectionPoint
 import com.sd.arcuit.logic.ICComponent
 import com.sd.arcuit.logic.ICPin
 import com.sd.arcuit.logic.Net
+import com.sd.arcuit.logic.PinConnectionDetector
+import org.opencv.core.Mat
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -81,18 +89,6 @@ class OverlayView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    private val correctPathPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.GREEN
-        strokeWidth = 6f
-        style = Paint.Style.STROKE
-    }
-
-    private val wrongPathPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.RED
-        strokeWidth = 6f
-        style = Paint.Style.STROKE
-    }
-
     private val pinStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
@@ -103,6 +99,19 @@ class OverlayView @JvmOverloads constructor(
         color = Color.WHITE
         style = Paint.Style.FILL
         alpha = 180
+    }
+
+    private val wireTraceFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        alpha = 95
+    }
+
+    private val wireTraceStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        alpha = 230
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
 
     private val ic7400Bitmap: Bitmap by lazy {
@@ -273,7 +282,6 @@ class OverlayView @JvmOverloads constructor(
         BitmapFactory.decodeResource(resources, R.drawable.ic_747266)
     }
 
-
     private var boxes: List<BoundingBox> = emptyList()
     private var icBodies: List<ICComponent> = emptyList()
     private var icLabels: Map<String, String> = emptyMap()
@@ -292,16 +300,13 @@ class OverlayView @JvmOverloads constructor(
         val state: PinVisualState
     )
 
-    data class GuideSegment(
-        val startX: Float,
-        val startY: Float,
-        val endX: Float,
-        val endY: Float,
-        val isCorrect: Boolean
+    data class WireTraceOverlay(
+        val wireColor: PinConnectionDetector.WireColor,
+        val points: List<PinConnectionDetector.TracePoint>
     )
 
     private var connectionMarkers: List<ConnectionMarker> = emptyList()
-    private var guideSegments: List<GuideSegment> = emptyList()
+    private var wireTraceOverlays: List<WireTraceOverlay> = emptyList()
 
     var listener: ICClickListener? = null
 
@@ -316,15 +321,18 @@ class OverlayView @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
-    fun setNets(newNets: List<Net>) {
+    fun setNets(
+        newNets: List<Net>,
+        frame: Mat,
+        scale: Float,
+        dx: Float,
+        dy: Float
+    ) {
         nets = newNets
 
         val newMarkers = mutableListOf<ConnectionMarker>()
-        val newSegments = mutableListOf<GuideSegment>()
-
         val connectedPinsByIc = mutableMapOf<String, MutableSet<Int>>()
 
-        // 🔹 Detect connected pins (ONLY endpoint-based)
         val detectedObjects = boxes.mapIndexedNotNull { index, box ->
 
             val mappedType = when (box.label) {
@@ -334,8 +342,13 @@ class OverlayView @JvmOverloads constructor(
                 "led" -> com.sd.arcuit.logic.ObjectType.LED
                 "switch" -> com.sd.arcuit.logic.ObjectType.SWITCH
                 "push_button" -> com.sd.arcuit.logic.ObjectType.PUSH_BUTTON
-                "vcc_pin" -> com.sd.arcuit.logic.ObjectType.VCC
-                "gnd_pin" -> com.sd.arcuit.logic.ObjectType.GND
+
+                "vcc_pin",
+                "pos_rail" -> com.sd.arcuit.logic.ObjectType.VCC
+
+                "gnd_pin",
+                "neg_rail" -> com.sd.arcuit.logic.ObjectType.GND
+
                 else -> null
             }
 
@@ -353,29 +366,48 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
-        val connections = com.sd.arcuit.logic.PinConnectionDetector.detect(icBodies, detectedObjects)
+        val detectionResult = try {
+            PinConnectionDetector.detect(
+                frame = frame,
+                icList = icBodies,
+                objects = detectedObjects,
+                scale = scale,
+                dx = dx,
+                dy = dy
+            )
+        } catch (e: Exception) {
+            android.util.Log.e(
+                "WIRE_TRACE_CRASH",
+                "PinConnectionDetector failed: ${e.message}",
+                e
+            )
 
-        connections.forEach { conn ->
-
-            connectedPinsByIc
-                .getOrPut(conn.icId) { mutableSetOf() }
-                .add(conn.pinIndex)
-
-            val ic = icBodies.firstOrNull { it.id == conn.icId } ?: return@forEach
-            val pin = ic.pins.firstOrNull { it.index == conn.pinIndex } ?: return@forEach
-
-            newSegments.add(
-                GuideSegment(
-                    startX = pin.point.x,
-                    startY = pin.point.y,
-                    endX = conn.objectX,
-                    endY = conn.objectY,
-                    isCorrect = true
-                )
+            PinConnectionDetector.DetectionResult(
+                connections = emptyList(),
+                wireTraces = emptyList()
             )
         }
 
-        // 🔹 Apply gate logic
+        val connections = detectionResult.connections
+
+        wireTraceOverlays = detectionResult.wireTraces.map { trace ->
+            WireTraceOverlay(
+                wireColor = trace.wireColor,
+                points = trace.points
+            )
+        }
+
+        android.util.Log.d(
+            "WIRE_TRACE_DRAW",
+            "traces=${wireTraceOverlays.size}, points=${wireTraceOverlays.sumOf { it.points.size }}"
+        )
+
+        connections.forEach { conn ->
+            connectedPinsByIc
+                .getOrPut(conn.icId) { mutableSetOf() }
+                .add(conn.pinIndex)
+        }
+
         icBodies.forEach { ic ->
 
             val icType = icLabels[ic.id] ?: return@forEach
@@ -394,7 +426,11 @@ class OverlayView @JvmOverloads constructor(
                             ConnectionMarker(
                                 x = pin.point.x,
                                 y = pin.point.y,
-                                state = if (isConnected) PinVisualState.GREEN else PinVisualState.GRAY
+                                state = if (isConnected) {
+                                    PinVisualState.GREEN
+                                } else {
+                                    PinVisualState.GRAY
+                                }
                             )
                         )
                     }
@@ -411,7 +447,6 @@ class OverlayView @JvmOverloads constructor(
 
                 val allInputsPresent = inputStatus.all { it.second }
 
-                // INPUTS
                 inputStatus.forEach { (pinIndex, isConnected) ->
 
                     val pin = ic.pins.firstOrNull { it.index == pinIndex } ?: return@forEach
@@ -420,12 +455,15 @@ class OverlayView @JvmOverloads constructor(
                         ConnectionMarker(
                             x = pin.point.x,
                             y = pin.point.y,
-                            state = if (isConnected) PinVisualState.GREEN else PinVisualState.GRAY
+                            state = if (isConnected) {
+                                PinVisualState.GREEN
+                            } else {
+                                PinVisualState.GRAY
+                            }
                         )
                     )
                 }
 
-                // OUTPUT
                 val outputPin = ic.pins.firstOrNull { it.index == group.outputPin }
 
                 if (outputPin != null) {
@@ -449,7 +487,6 @@ class OverlayView @JvmOverloads constructor(
         }
 
         connectionMarkers = newMarkers
-        guideSegments = newSegments
 
         postInvalidateOnAnimation()
     }
@@ -503,7 +540,7 @@ class OverlayView @JvmOverloads constructor(
             neonPaint.style = Paint.Style.STROKE
             neonPaint.strokeWidth = 6f
             neonPaint.color = Color.CYAN
-            neonPaint.maskFilter = BlurMaskFilter(15f, BlurMaskFilter.Blur.OUTER)
+            neonPaint.maskFilter = null
 
             canvas.drawRect(ic.boundingBox, neonPaint)
 
@@ -519,14 +556,51 @@ class OverlayView @JvmOverloads constructor(
             ic.pins.forEach { pin: ICPin ->
                 neonPaint.style = Paint.Style.FILL
                 neonPaint.color = Color.RED
-                neonPaint.maskFilter = BlurMaskFilter(12f, BlurMaskFilter.Blur.OUTER)
+                neonPaint.maskFilter = null
 
                 canvas.drawCircle(pin.point.x, pin.point.y, 12f, neonPaint)
             }
         }
     }
 
+    private fun drawWireTraceOverlay(canvas: Canvas) {
+
+        wireTraceOverlays.forEach { trace ->
+
+            if (trace.points.size < 3) {
+                return@forEach
+            }
+
+            val color = when (trace.wireColor) {
+                PinConnectionDetector.WireColor.RED -> Color.RED
+                PinConnectionDetector.WireColor.BLUE -> Color.BLUE
+                PinConnectionDetector.WireColor.GREEN -> Color.GREEN
+                PinConnectionDetector.WireColor.YELLOW -> Color.YELLOW
+            }
+
+            wireTraceFillPaint.color = color
+            wireTraceStrokePaint.color = color
+
+            val path = Path()
+            val firstPoint = trace.points.first()
+
+            path.moveTo(firstPoint.x, firstPoint.y)
+
+            trace.points.drop(1).forEach { point ->
+                path.lineTo(point.x, point.y)
+            }
+
+            path.close()
+
+            canvas.drawPath(path, wireTraceFillPaint)
+            canvas.drawPath(path, wireTraceStrokePaint)
+        }
+    }
+
     private fun drawCircuitDiagram(canvas: Canvas) {
+
+        drawWireTraceOverlay(canvas)
+
         icBodies.forEach { ic ->
             val box = ic.boundingBox
             val label = icLabels[ic.id] ?: "IC"
@@ -574,7 +648,7 @@ class OverlayView @JvmOverloads constructor(
                 "747002" -> ic747002Bitmap
                 "747032" -> ic747032Bitmap
                 "747266" -> ic747266Bitmap
-                  else -> null
+                else -> null
             }
 
             if (selectedBitmap != null) {
@@ -602,32 +676,17 @@ class OverlayView @JvmOverloads constructor(
                 canvas.restoreToCount(saveCount)
             }
 
-            // 🔥 ALWAYS DRAW BOUNDING BOX (on top)
             boxPaint.color = Color.YELLOW
             boxPaint.style = Paint.Style.STROKE
             boxPaint.strokeWidth = 4f
             canvas.drawRect(box, boxPaint)
 
-            // 🔹 pins (still visible)
             ic.pins.forEach { pin ->
                 canvas.drawCircle(pin.point.x, pin.point.y, 4f, basePinPaint)
                 canvas.drawCircle(pin.point.x, pin.point.y, 6f, pinStrokePaint)
             }
         }
 
-        // 🔹 wires
-        guideSegments.forEach { segment ->
-            val paint = if (segment.isCorrect) correctPathPaint else wrongPathPaint
-            canvas.drawLine(
-                segment.startX,
-                segment.startY,
-                segment.endX,
-                segment.endY,
-                paint
-            )
-        }
-
-        // 🔹 connection markers
         connectionMarkers.forEach { marker ->
             val fillPaint = when (marker.state) {
                 PinVisualState.GREEN -> connectedPaint
@@ -635,6 +694,7 @@ class OverlayView @JvmOverloads constructor(
                 PinVisualState.RED -> missingPaint
                 PinVisualState.GRAY -> neutralPaint
             }
+
             canvas.drawCircle(marker.x, marker.y, 8f, fillPaint)
             canvas.drawCircle(marker.x, marker.y, 10f, pinStrokePaint)
         }
@@ -649,6 +709,7 @@ class OverlayView @JvmOverloads constructor(
                 return true
             }
         }
+
         return false
     }
 
@@ -694,7 +755,12 @@ class OverlayView @JvmOverloads constructor(
         return result
     }
 
-    private fun distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
+    private fun distance(
+        x1: Float,
+        y1: Float,
+        x2: Float,
+        y2: Float
+    ): Float {
         return sqrt((x1 - x2).pow(2) + (y1 - y2).pow(2))
     }
 }

@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Button
 
+
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -37,6 +38,9 @@ import android.view.ScaleGestureDetector
 import android.view.MotionEvent
 
 import com.sd.arcuit.util.toBitmap
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.android.OpenCVLoader
 
 import java.util.concurrent.Executors
 
@@ -74,6 +78,12 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        if (!OpenCVLoader.initDebug()) {
+            Log.e("OpenCV", "OpenCV initialization failed")
+        } else {
+            Log.d("OpenCV", "OpenCV initialized successfully")
+        }
 
         previewView = findViewById(R.id.previewView)
         previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
@@ -229,22 +239,22 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
             analysis.setAnalyzer(analysisExecutor) { imageProxy ->
 
-                val now = System.currentTimeMillis()
-                if (now - lastAnalyzedTime < ANALYSIS_INTERVAL_MS) {
-                    imageProxy.close()
-                    return@setAnalyzer
-                }
-                lastAnalyzedTime = now
+                try {
+                    val now = System.currentTimeMillis()
+                    if (now - lastAnalyzedTime < ANALYSIS_INTERVAL_MS) {
+                        return@setAnalyzer
+                    }
+                    lastAnalyzedTime = now
 
-                val fullBitmap = imageProxy.toBitmap()
-                val crop = imageProxy.cropRect
-                val bitmap = Bitmap.createBitmap(
-                    fullBitmap,
-                    crop.left,
-                    crop.top,
-                    crop.width(),
-                    crop.height()
-                )
+                    val fullBitmap = imageProxy.toBitmap()
+                    val crop = imageProxy.cropRect
+                    val bitmap = Bitmap.createBitmap(
+                        fullBitmap,
+                        crop.left,
+                        crop.top,
+                        crop.width(),
+                        crop.height()
+                    )
 
                 val detections = detector.detect(bitmap)
 
@@ -572,7 +582,24 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
                     )
                 }
 
-                overlayView.setNets(overlayNets)
+                    val frameMat = Mat()
+
+                    try {
+                        Utils.bitmapToMat(bitmap, frameMat)
+
+                        overlayView.setNets(
+                            newNets = overlayNets,
+                            frame = frameMat,
+                            scale = scale,
+                            dx = dx,
+                            dy = dy
+                        )
+
+                    } catch (e: Exception) {
+                        Log.e("WIRE_TRACE_CRASH", "Wire tracing failed: ${e.message}", e)
+                    } finally {
+                        frameMat.release()
+                    }
 
                 debugFrameCounter++
                 if (debugFrameCounter % 15 == 0) {
@@ -592,7 +619,11 @@ class MainActivity : AppCompatActivity(), OverlayView.ICClickListener {
 
                 com.sd.arcuit.logic.CircuitAnalyzer.analyze(logicDetections, icBodies)
 
-                imageProxy.close()
+                } catch (e: Exception) {
+                    Log.e("APP_CRASH_CHECK", "Analyzer crashed: ${e.message}", e)
+                } finally {
+                    imageProxy.close()
+                }
             }
 
             cameraProvider?.unbindAll()
