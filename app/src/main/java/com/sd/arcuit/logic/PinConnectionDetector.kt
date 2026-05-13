@@ -2,12 +2,29 @@ package com.sd.arcuit.logic
 
 import kotlin.math.abs
 
+/**
+ * Detects and assigns connections between IC pins and detected objects
+ * (wire endpoints, VCC, GND) based on spatial positioning.
+ *
+ * The algorithm uses directional constraints:
+ * - Forward distance (along expected pin direction)
+ * - Side tolerance (alignment perpendicular to direction)
+ * - Direction strength (ensures correct orientation)
+ */
 object PinConnectionDetector {
 
-    private const val FORWARD_DISTANCE = 110f
-    private const val SIDE_TOLERANCE = 22f
-    private const val MIN_FORWARD_OFFSET = 6f
+    // Maximum allowed distance in the forward direction from pin to object
+    private const val FORWARD_DISTANCE = 150f
+ 
+    // Maximum allowed sideways deviation from ideal alignment
+    private const val SIDE_TOLERANCE = 20f
 
+    // Minimum forward offset to avoid self or near-pin noise detection
+    private const val MIN_FORWARD_OFFSET = 4f
+
+    /**
+     * Represents a valid pin-to-object connection.
+     */
     data class PinConnection(
         val icId: String,
         val pinIndex: Int,
@@ -17,6 +34,9 @@ object PinConnectionDetector {
         val objectY: Float
     )
 
+    /**
+     * Detects valid connections between IC pins and circuit objects.
+     */
     fun detect(
         icList: List<ICComponent>,
         objects: List<DetectedObject>
@@ -24,6 +44,7 @@ object PinConnectionDetector {
 
         val connections = mutableListOf<PinConnection>()
 
+        // Only consider electrically relevant objects
         val validObjects = objects.filter {
             it.type == ObjectType.WIRE_ENDPOINT ||
                     it.type == ObjectType.VCC ||
@@ -33,20 +54,25 @@ object PinConnectionDetector {
         for (ic in icList) {
             val icCenterX = ic.boundingBox.centerX()
             val icCenterY = ic.boundingBox.centerY()
+
+            // Determine IC orientation (horizontal vs vertical on screen)
             val isHorizontalIc = ic.boundingBox.width() >= ic.boundingBox.height()
 
             for (pin in ic.pins) {
                 val pinX = pin.point.x
                 val pinY = pin.point.y
 
+                // Evaluate each candidate object for connection
                 val best = validObjects.mapNotNull { obj ->
+
                     val objCenterX = (obj.left + obj.right) / 2f
                     val objCenterY = (obj.top + obj.bottom) / 2f
 
                     if (isHorizontalIc) {
-                        // Horizontal IC on screen:
-                        // top pins -> upward only
-                        // bottom pins -> downward only
+
+                        // Horizontal IC layout:
+                        // Top pins connect upward
+                        // Bottom pins connect downward
                         val isTopPin = pinY < icCenterY
 
                         val forward = if (isTopPin) {
@@ -59,6 +85,8 @@ object PinConnectionDetector {
 
                         val forwardOk = forward in MIN_FORWARD_OFFSET..FORWARD_DISTANCE
                         val sideOk = sideOffset <= SIDE_TOLERANCE
+
+                        // Ensures object is primarily in the forward direction
                         val strongDirection = forward > sideOffset * 2.5f
 
                         if (!forwardOk || !sideOk || !strongDirection) {
@@ -72,10 +100,12 @@ object PinConnectionDetector {
                                 sideOffset = sideOffset
                             )
                         }
+
                     } else {
-                        // Vertical IC on screen:
-                        // left pins -> left only
-                        // right pins -> right only
+
+                        // Vertical IC layout:
+                        // Left pins connect leftward
+                        // Right pins connect rightward
                         val isLeftPin = pinX < icCenterX
 
                         val forward = if (isLeftPin) {
@@ -102,10 +132,13 @@ object PinConnectionDetector {
                             )
                         }
                     }
+
+                    // Select best candidate based on alignment quality
                 }.minByOrNull { candidate ->
                     candidate.sideOffset * 8f + candidate.forward
                 }
 
+                // Register connection if a valid match is found
                 if (best != null) {
                     connections.add(
                         PinConnection(
@@ -124,6 +157,9 @@ object PinConnectionDetector {
         return connections
     }
 
+    /**
+     * Internal candidate used for ranking possible matches.
+     */
     private data class Candidate(
         val obj: DetectedObject,
         val centerX: Float,

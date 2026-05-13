@@ -1,8 +1,0 @@
-ic_body
-led
-neg_rail
-pos_rail
-push_button
-resistor
-switch
-wire_endpoint

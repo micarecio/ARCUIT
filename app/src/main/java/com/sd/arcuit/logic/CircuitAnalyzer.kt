@@ -4,11 +4,22 @@ import android.util.Log
 
 object CircuitAnalyzer {
 
+    /**
+     * Main entry point for circuit analysis.
+     *
+     * Converts detection outputs into a graph of nodes,
+     * adds IC pin nodes, builds electrical nets,
+     * and logs the resulting connectivity groups.
+     */
     fun analyze(
         detections: List<Detection>,
         icBodies: List<ICComponent>
     ) {
 
+        /**
+         * Convert model detections into internal object representations.
+         * Each detected bounding box becomes a DetectedObject.
+         */
         val detectedObjects = detections.mapIndexed { index, d ->
             DetectedObject(
                 id = "OBJ_$index",
@@ -20,6 +31,10 @@ object CircuitAnalyzer {
             )
         }
 
+        /**
+         * Convert detected objects into graph nodes.
+         * Each node represents the center point of an object.
+         */
         val objectNodes = detectedObjects.mapIndexed { index, obj ->
             Node(
                 id = index,
@@ -33,8 +48,15 @@ object CircuitAnalyzer {
             )
         }
 
+        /**
+         * Offset used to avoid ID collisions between object nodes and pin nodes.
+         */
         val startId = objectNodes.size
 
+        /**
+         * Create nodes for IC pins.
+         * Each pin is treated as a connection point in the circuit graph.
+         */
         val pinNodes = icBodies.flatMapIndexed { icIndex, ic ->
             ic.pins.mapIndexed { pinIndex, pin ->
                 Node(
@@ -50,10 +72,17 @@ object CircuitAnalyzer {
             }
         }
 
+        // Combine all nodes into a single graph input
         val nodes = objectNodes + pinNodes
 
+        /**
+         * Build electrical networks (nets) from connected nodes.
+         */
         val nets = NetBuilder().buildNets(nodes)
 
+        /**
+         * Debug output: print each net and its connected components.
+         */
         nets.forEach { (id, nodeList) ->
             Log.d("NET", "NET_$id")
             nodeList.forEach { node ->
@@ -62,6 +91,9 @@ object CircuitAnalyzer {
         }
     }
 
+    /**
+     * Maps model label strings to internal ObjectType enum.
+     */
     private fun mapLabelToType(label: String): ObjectType {
         return when (label.lowercase()) {
             "ic_body" -> ObjectType.IC_BODY
@@ -76,6 +108,9 @@ object CircuitAnalyzer {
         }
     }
 
+    /**
+     * Converts ObjectType back into string labels used by graph nodes.
+     */
     private fun mapObjectTypeToNodeLabel(type: ObjectType): String {
         return when (type) {
             ObjectType.IC_BODY -> "ic_body"

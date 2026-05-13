@@ -1,10 +1,18 @@
 package com.sd.arcuit.logic
 
+/**
+ * Represents a single row in a truth table.
+ * inputs -> binary input values (as strings for UI display)
+ * output -> resulting gate output (0 or 1 as string)
+ */
 data class TruthTableRow(
     val inputs: List<String>,
     val output: String
 )
 
+/**
+ * Full truth table structure for an IC gate.
+ */
 data class TruthTableData(
     val title: String,
     val headers: List<String>,
@@ -13,6 +21,9 @@ data class TruthTableData(
 
 object TruthTables {
 
+    /**
+     * Generates truth table rows for single-input logic gates.
+     */
     private fun oneInputRows(gate: (Int) -> Int): List<TruthTableRow> {
         return listOf(
             TruthTableRow(listOf("0"), gate(0).toString()),
@@ -20,6 +31,9 @@ object TruthTables {
         )
     }
 
+    /**
+     * Generates truth table rows for 2-input logic gates.
+     */
     private fun twoInputRows(gate: (Int, Int) -> Int): List<TruthTableRow> {
         return listOf(
             TruthTableRow(listOf("0", "0"), gate(0, 0).toString()),
@@ -29,6 +43,10 @@ object TruthTables {
         )
     }
 
+    /**
+     * Generates truth table rows for 3-input logic gates.
+     * Covers all 8 input combinations (2^3).
+     */
     private fun threeInputRows(gate: (Int, Int, Int) -> Int): List<TruthTableRow> {
         return listOf(
             TruthTableRow(listOf("0", "0", "0"), gate(0, 0, 0).toString()),
@@ -42,8 +60,13 @@ object TruthTables {
         )
     }
 
+    /**
+     * Generates truth table rows for 4-input logic gates.
+     * Uses nested loops for clarity and scalability.
+     */
     private fun fourInputRows(gate: (Int, Int, Int, Int) -> Int): List<TruthTableRow> {
         val rows = mutableListOf<TruthTableRow>()
+
         for (a in 0..1) {
             for (b in 0..1) {
                 for (c in 0..1) {
@@ -58,13 +81,20 @@ object TruthTables {
                 }
             }
         }
+
         return rows
     }
 
+    /**
+     * Generates truth table rows for 8-input logic gates.
+     * Iterates over all 256 combinations (2^8).
+     */
     private fun eightInputRows(gate: (List<Int>) -> Int): List<TruthTableRow> {
         val rows = mutableListOf<TruthTableRow>()
 
         for (i in 0 until 256) {
+
+            // Convert integer to 8-bit binary list
             val bits = (7 downTo 0).map { bit ->
                 if ((i shr bit) and 1 == 1) 1 else 0
             }
@@ -80,97 +110,71 @@ object TruthTables {
         return rows
     }
 
+    /**
+     * Main lookup function:
+     * Returns truth table for a given IC chip code.
+     */
     fun get(icCode: String): TruthTableData? {
         return when (icCode) {
 
-            // ---------------- NOT / INVERTER / BUFFER-LIKE ----------------
-
+            // ---------------- NOT / INVERTER ----------------
             "7404", "7405", "7406", "7414", "7416", "7419" -> TruthTableData(
                 title = "$icCode NOT",
                 headers = listOf("A", "Y"),
-                rows = oneInputRows { a ->
-                    if (a == 0) 1 else 0
-                }
+                rows = oneInputRows { a -> if (a == 0) 1 else 0 }
             )
 
+            // ---------------- BUFFER ----------------
             "7407", "7417" -> TruthTableData(
                 title = "$icCode BUFFER",
                 headers = listOf("A", "Y"),
                 rows = oneInputRows { a -> a }
             )
 
-            // ---------------- 2-INPUT AND ----------------
-
+            // ---------------- AND GATES ----------------
             "7408", "7409", "747001" -> TruthTableData(
                 title = "$icCode AND",
                 headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a == 1 && b == 1) 1 else 0
-                }
+                rows = twoInputRows { a, b -> if (a == 1 && b == 1) 1 else 0 }
             )
 
-            // ---------------- 2-INPUT NAND ----------------
-
-            "7400", "7403", "7424", "7426", "7437", "7438", "74132", "74136" -> TruthTableData(
-                title = "$icCode NAND",
-                headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a == 1 && b == 1) 0 else 1
-                }
-            )
-
-            // ---------------- 2-INPUT NAND (alt family in your map) ----------------
-
+            // ---------------- NAND GATES ----------------
+            "7400", "7403", "7424", "7426", "7437", "7438", "74132", "74136",
             "7401" -> TruthTableData(
                 title = "$icCode NAND",
                 headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a == 1 && b == 1) 0 else 1
-                }
+                rows = twoInputRows { a, b -> if (a == 1 && b == 1) 0 else 1 }
             )
 
-            // ---------------- 2-INPUT NOR ----------------
-
+            // ---------------- NOR GATES ----------------
             "7402", "7428", "7433", "747002" -> TruthTableData(
                 title = "$icCode NOR",
                 headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a == 1 || b == 1) 0 else 1
-                }
+                rows = twoInputRows { a, b -> if (a == 1 || b == 1) 0 else 1 }
             )
 
-            // ---------------- 2-INPUT OR ----------------
-
+            // ---------------- OR GATES ----------------
             "7432", "747032" -> TruthTableData(
                 title = "$icCode OR",
                 headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a == 1 || b == 1) 1 else 0
-                }
+                rows = twoInputRows { a, b -> if (a == 1 || b == 1) 1 else 0 }
             )
 
-            // ---------------- 2-INPUT XOR ----------------
-
+            // ---------------- XOR ----------------
             "7486" -> TruthTableData(
                 title = "$icCode XOR",
                 headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a != b) 1 else 0
-                }
+                rows = twoInputRows { a, b -> if (a != b) 1 else 0 }
             )
 
-            // ---------------- 2-INPUT XNOR ----------------
-
+            // ---------------- XNOR ----------------
             "74266", "747266" -> TruthTableData(
                 title = "$icCode XNOR",
                 headers = listOf("A", "B", "Y"),
-                rows = twoInputRows { a, b ->
-                    if (a == b) 1 else 0
-                }
+                rows = twoInputRows { a, b -> if (a == b) 1 else 0 }
             )
 
             // ---------------- 3-INPUT NAND ----------------
-
             "7410", "7412" -> TruthTableData(
                 title = "$icCode 3-INPUT NAND",
                 headers = listOf("A", "B", "C", "Y"),
@@ -180,7 +184,6 @@ object TruthTables {
             )
 
             // ---------------- 3-INPUT AND ----------------
-
             "7411", "7415" -> TruthTableData(
                 title = "$icCode 3-INPUT AND",
                 headers = listOf("A", "B", "C", "Y"),
@@ -190,7 +193,6 @@ object TruthTables {
             )
 
             // ---------------- 3-INPUT NOR ----------------
-
             "7427" -> TruthTableData(
                 title = "$icCode 3-INPUT NOR",
                 headers = listOf("A", "B", "C", "Y"),
@@ -200,7 +202,6 @@ object TruthTables {
             )
 
             // ---------------- 4-INPUT NAND ----------------
-
             "7413", "7418", "7420" -> TruthTableData(
                 title = "$icCode 4-INPUT NAND",
                 headers = listOf("A", "B", "C", "D", "Y"),
@@ -210,7 +211,6 @@ object TruthTables {
             )
 
             // ---------------- 4-INPUT AND ----------------
-
             "7421", "7422", "7440" -> TruthTableData(
                 title = "$icCode 4-INPUT AND",
                 headers = listOf("A", "B", "C", "D", "Y"),
@@ -220,7 +220,6 @@ object TruthTables {
             )
 
             // ---------------- 4-INPUT NOR ----------------
-
             "7425" -> TruthTableData(
                 title = "$icCode 4-INPUT NOR",
                 headers = listOf("A", "B", "C", "D", "Y"),
@@ -230,7 +229,6 @@ object TruthTables {
             )
 
             // ---------------- 8-INPUT NAND ----------------
-
             "7430" -> TruthTableData(
                 title = "$icCode 8-INPUT NAND",
                 headers = listOf("A", "B", "C", "D", "E", "F", "G", "H", "Y"),

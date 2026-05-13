@@ -1,9 +1,18 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
+
     <style name="Base.Theme.ARCUIT" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+
+        <!-- REMOVE purple status bar -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+
+        <!-- Make content go behind status bar -->
+        <item name="android:windowTranslucentStatus">true</item>
+
+        <!-- Optional: white nav bar -->
+        <item name="android:navigationBarColor">#FFFFFF</item>
+
     </style>
 
     <style name="Theme.ARCUIT" parent="Base.Theme.ARCUIT" />
+
 </resources>

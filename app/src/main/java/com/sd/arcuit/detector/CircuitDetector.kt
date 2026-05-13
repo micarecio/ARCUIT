@@ -12,31 +12,38 @@ import java.nio.ByteOrder
 
 class CircuitDetector(context: Context) {
 
+    // TensorFlow Lite interpreter for running the model
     private val interpreter: Interpreter
+
+    // List of detectable circuit component classes
     private val labels = listOf(
         "ic_body",
-        "led",
-        "neg_rail",
-        "pos_rail",
-        "push_button",
-        "resistor",
-        "switch",
         "wire_endpoint"
     )
 
+    // Model input resolution
     private val inputSize = 640
+
+    // Default confidence threshold for detections
     private val confThreshold = 0.25f
 
     init {
+        // Load TFLite model from assets
         interpreter = Interpreter(
             FileUtil.loadMappedFile(context, "arcuit.tflite")
         )
-        Log.d("ARCUIT_DEBUG",
-            "Output shape=${interpreter.getOutputTensor(0).shape().contentToString()}")
+
+        // Debug: print output tensor shape for verification
+        Log.d(
+            "ARCUIT_DEBUG",
+            "Output shape=${interpreter.getOutputTensor(0).shape().contentToString()}"
+        )
     }
 
+    /**
+     * Runs object detection on a bitmap image.
+     */
     fun detect(bitmap: Bitmap): List<Detection> {
-
         val lb = letterbox(bitmap, inputSize)
         val img = lb.bitmap
 
@@ -47,31 +54,36 @@ class CircuitDetector(context: Context) {
         for (y in 0 until inputSize) {
             for (x in 0 until inputSize) {
                 val px = img.getPixel(x, y)
-
-                input.putFloat(((px shr 16) and 0xFF) / 255f) // R
-                input.putFloat(((px shr 8) and 0xFF) / 255f)  // G
-                input.putFloat((px and 0xFF) / 255f)          // B
+                input.putFloat(((px shr 16) and 0xFF) / 255f)
+                input.putFloat(((px shr 8) and 0xFF) / 255f)
+                input.putFloat((px and 0xFF) / 255f)
             }
         }
 
+        val numClasses = labels.size
+        val outputShape = interpreter.getOutputTensor(0).shape()
+        val channels = outputShape[1]
+        val numPreds = outputShape[2]
 
-        val output = Array(1) { Array(12) { FloatArray(8400) } }
+        val output = Array(1) { Array(channels) { FloatArray(numPreds) } }
+
         interpreter.run(input, output)
 
         val results = mutableListOf<Detection>()
 
-        for (i in 0 until 8400) {
-
+        for (i in 0 until numPreds) {
             var bestScore = 0f
             var bestClass = -1
 
-            for (c in 0 until 8) {
+            for (c in 0 until numClasses) {
                 val score = output[0][4 + c][i]
                 if (score > bestScore) {
                     bestScore = score
                     bestClass = c
                 }
             }
+
+            if (bestClass == -1) continue
 
             val minConf = when (labels[bestClass]) {
                 "wire_endpoint" -> 0.10f
@@ -82,17 +94,17 @@ class CircuitDetector(context: Context) {
 
             val cx = output[0][0][i] * inputSize
             val cy = output[0][1][i] * inputSize
-            val w  = output[0][2][i] * inputSize
-            val h  = output[0][3][i] * inputSize
+            val w = output[0][2][i] * inputSize
+            val h = output[0][3][i] * inputSize
 
             val x = (cx - lb.padX) / lb.scale
             val y = (cy - lb.padY) / lb.scale
             val bw = w / lb.scale
             val bh = h / lb.scale
 
-            val left   = (x - bw / 2).coerceIn(0f, bitmap.width.toFloat())
-            val top    = (y - bh / 2).coerceIn(0f, bitmap.height.toFloat())
-            val right  = (x + bw / 2).coerceIn(0f, bitmap.width.toFloat())
+            val left = (x - bw / 2).coerceIn(0f, bitmap.width.toFloat())
+            val top = (y - bh / 2).coerceIn(0f, bitmap.height.toFloat())
+            val right = (x + bw / 2).coerceIn(0f, bitmap.width.toFloat())
             val bottom = (y + bh / 2).coerceIn(0f, bitmap.height.toFloat())
 
             results.add(
@@ -102,15 +114,14 @@ class CircuitDetector(context: Context) {
                     RectF(left, top, right, bottom)
                 )
             )
-
         }
 
-        return clusterDetections(
-            nonMaxSuppression(results)
-        )
-
+        return clusterDetections(nonMaxSuppression(results))
     }
 
+    /**
+     * Removes overlapping detections using Non-Max Suppression (NMS).
+     */
     private fun nonMaxSuppression(dets: List<Detection>): List<Detection> {
         val out = mutableListOf<Detection>()
         val sorted = dets.sortedByDescending { it.confidence }
@@ -119,14 +130,18 @@ class CircuitDetector(context: Context) {
             var keep = true
 
             for (p in out) {
+
+                // Only compare same class objects
                 if (d.label != p.label) continue
 
+                // IoU threshold varies per class
                 val iouThresh = when (d.label) {
                     "wire_endpoint" -> 0.05f
                     "push_button" -> 0.25f
                     else -> 0.45f
                 }
 
+                // Suppress overlapping detection
                 if (iou(d.boundingBox, p.boundingBox) > iouThresh) {
                     keep = false
                     break
@@ -138,6 +153,10 @@ class CircuitDetector(context: Context) {
 
         return out
     }
+
+    /**
+     * Clusters nearby detections to avoid duplicates caused by jitter.
+     */
     private fun clusterDetections(
         detections: List<Detection>,
         radiusPx: Float = 14f
@@ -146,13 +165,17 @@ class CircuitDetector(context: Context) {
         val result = mutableListOf<Detection>()
 
         for (d in detections.sortedByDescending { it.confidence }) {
+
             val cx = d.boundingBox.centerX()
             val cy = d.boundingBox.centerY()
 
+            // Check if another detection is too close
             val exists = result.any {
                 if (d.label == "wire_endpoint") return@any false
+
                 val dx = it.boundingBox.centerX() - cx
                 val dy = it.boundingBox.centerY() - cy
+
                 dx * dx + dy * dy < radiusPx * radiusPx
             }
 
@@ -162,13 +185,18 @@ class CircuitDetector(context: Context) {
         return result
     }
 
+    /**
+     * Computes Intersection over Union (IoU) between two bounding boxes.
+     */
     private fun iou(a: RectF, b: RectF): Float {
         val l = maxOf(a.left, b.left)
         val t = maxOf(a.top, b.top)
         val r = minOf(a.right, b.right)
         val btm = minOf(a.bottom, b.bottom)
+
         val inter = maxOf(0f, r - l) * maxOf(0f, btm - t)
         val ua = a.width() * a.height() + b.width() * b.height() - inter
+
         return inter / (ua + 1e-6f)
     }
 }

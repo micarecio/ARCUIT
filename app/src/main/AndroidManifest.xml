@@ -18,8 +18,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ARCUIT"
         tools:targetApi="31">
+
         <activity
             android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".IntroActivity"
             android:exported="true"
             android:screenOrientation="landscape">
 
@@ -28,6 +34,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
     </application>
 
 </manifest>

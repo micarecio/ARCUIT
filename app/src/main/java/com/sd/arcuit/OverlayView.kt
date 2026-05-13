@@ -320,6 +320,15 @@ class OverlayView @JvmOverloads constructor(
     private var icLabels: Map<String, String> = emptyMap()
     private var nets: List<Net> = emptyList()
 
+    private val icLabelHistory = mutableMapOf<String, MutableList<String>>()
+    private val stableIcLabels = mutableMapOf<String, String>()
+
+    private var lastBoxes: List<BoundingBox> = emptyList()
+    private var stableFrameCount = 0
+
+    private val requiredStableFrames = 3
+    private val labelHistorySize = 1
+
     enum class PinVisualState {
         RED,
         YELLOW,
@@ -351,13 +360,69 @@ class OverlayView @JvmOverloads constructor(
         newICs: List<ICComponent>,
         labels: Map<String, String>
     ) {
-        boxes = newBoxes
+        // If nothing is detected anymore, clear everything immediately
+        if (newICs.isEmpty()) {
+            boxes = emptyList()
+            icBodies = emptyList()
+            icLabels = emptyMap()
+            nets = emptyList()
+
+            connectionMarkers = emptyList()
+            guideSegments = emptyList()
+
+            icLabelHistory.clear()
+            stableIcLabels.clear()
+
+            postInvalidateOnAnimation()
+            return
+        }
+
+        // Update label history per IC
+        newICs.forEach { ic ->
+            val detectedLabel = labels[ic.id] ?: return@forEach
+
+            val history = icLabelHistory.getOrPut(ic.id) { mutableListOf() }
+            history.add(detectedLabel)
+
+            if (history.size > labelHistorySize) {
+                history.removeAt(0)
+            }
+
+            val votedLabel = history
+                .groupingBy { it }
+                .eachCount()
+                .maxByOrNull { it.value }
+                ?.key
+
+            if (votedLabel != null) {
+                stableIcLabels[ic.id] = votedLabel
+            }
+        }
+
+        val visibleIds = newICs.map { it.id }.toSet()
+        icLabelHistory.keys.retainAll(visibleIds)
+        stableIcLabels.keys.retainAll(visibleIds)
+
+        // Always update IC bodies
         icBodies = newICs
-        icLabels = labels
+
+        // Keep boxes only if still needed by setNets()
+        boxes = newBoxes
+
+        // Use stable voted labels only
+        icLabels = stableIcLabels.toMap()
+
         postInvalidateOnAnimation()
     }
 
     fun setNets(newNets: List<Net>) {
+        if (icBodies.isEmpty()) {
+            nets = emptyList()
+            connectionMarkers = emptyList()
+            guideSegments = emptyList()
+            postInvalidateOnAnimation()
+            return
+        }
         nets = newNets
 
         val newMarkers = mutableListOf<ConnectionMarker>()
@@ -810,6 +875,26 @@ class OverlayView @JvmOverloads constructor(
             }
         }
         return false
+    }
+
+    private fun isSimilarBoxes(
+        oldBoxes: List<BoundingBox>,
+        newBoxes: List<BoundingBox>,
+        tolerance: Float = 20f
+    ): Boolean {
+        if (oldBoxes.size != newBoxes.size) return false
+        if (oldBoxes.isEmpty() && newBoxes.isEmpty()) return true
+
+        val sortedOld = oldBoxes.sortedBy { "${it.label}_${it.left.toInt()}_${it.top.toInt()}" }
+        val sortedNew = newBoxes.sortedBy { "${it.label}_${it.left.toInt()}_${it.top.toInt()}" }
+
+        return sortedOld.zip(sortedNew).all { (oldBox, newBox) ->
+            oldBox.label == newBox.label &&
+                    kotlin.math.abs(oldBox.left - newBox.left) < tolerance &&
+                    kotlin.math.abs(oldBox.top - newBox.top) < tolerance &&
+                    kotlin.math.abs(oldBox.right - newBox.right) < tolerance &&
+                    kotlin.math.abs(oldBox.bottom - newBox.bottom) < tolerance
+        }
     }
 
     interface ICClickListener {

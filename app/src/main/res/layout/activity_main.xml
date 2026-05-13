@@ -4,33 +4,232 @@
     android:id="@+id/root_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black">
+    android:background="@android:color/black"
+    android:fitsSystemWindows="true">
 
-    <!-- Full camera background -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Full overlay -->
     <com.sd.arcuit.OverlayView
         android:id="@+id/overlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Detection guide area -->
     <FrameLayout
         android:id="@+id/detectionGuideContainer"
-        android:layout_width="320dp"
+        android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:layout_marginEnd="96dp"
+        android:paddingStart="140dp"
+        android:paddingEnd="96dp"
         android:background="@android:color/transparent"
         android:clickable="false"
-        android:focusable="false">
+        android:focusable="false" />
+
+    <FrameLayout
+        android:id="@+id/truthTableOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="@android:color/transparent">
+
+        <ScrollView
+            android:id="@+id/truthTablePanelScroll"
+            android:layout_width="280dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="40dp"
+            android:layout_marginBottom="40dp"
+            android:fillViewport="true"
+            android:scrollbars="vertical">
+
+            <LinearLayout
+                android:id="@+id/truthTablePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:background="@drawable/truth_table_panel_bg">
+
+                <TextView
+                    android:id="@+id/txtTruthTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Truth Table"
+                    android:textColor="#00FFFF"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:layout_marginBottom="8dp" />
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
+
+                    <TextView
+                        android:id="@+id/txtTruthContent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp"
+                        android:typeface="monospace" />
+                </HorizontalScrollView>
+
+            </LinearLayout>
+        </ScrollView>
     </FrameLayout>
 
-    <!-- AR-like floating IC selector -->
+    <ScrollView
+        android:id="@+id/buttonPanelScroll"
+        android:layout_width="96dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/buttonPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:padding="10dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnHowToUse"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_help"
+                    android:tint="#000000"
+                    android:contentDescription="How to Use"
+                    app:fabCustomSize="64dp"
+                    app:backgroundTint="#00FFFF" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Guide"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnTorch"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_flash_off"
+                    android:tint="#FFFFFF"
+                    android:contentDescription="Toggle Flash"
+                    app:fabCustomSize="64dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Flash"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnDetection"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_detection"
+                    android:tint="#00FFCC"
+                    android:contentDescription="Detection Layer"
+                    app:fabCustomSize="64dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Detect"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnCircuit"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_circuit"
+                    android:tint="#00FFCC"
+                    android:contentDescription="Circuit Diagram Layer"
+                    app:fabCustomSize="64dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Check IC Pins"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/btnTruthTable"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_table"
+                    android:tint="#FFFFFF"
+                    android:contentDescription="Truth Table"
+                    app:fabCustomSize="64dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Truth Table"
+                    android:textColor="#00FFCC"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
     <FrameLayout
         android:id="@+id/icSelectorOverlay"
         android:layout_width="match_parent"
@@ -44,14 +243,17 @@
             android:id="@+id/icSelectorCard"
             android:layout_width="280dp"
             android:layout_height="wrap_content"
-            android:layout_margin="12dp"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp"
             app:cardBackgroundColor="#66111111"
             app:cardCornerRadius="18dp"
             app:cardElevation="12dp"
             app:strokeColor="#00FFFF"
             app:strokeWidth="2dp">
 
-            <LinearLayout
+        <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -123,185 +325,156 @@
         </com.google.android.material.card.MaterialCardView>
     </FrameLayout>
 
-    <!-- Expanded Truth Table Panel -->
     <FrameLayout
-        android:id="@+id/truthTableOverlay"
+        android:id="@+id/tutorialOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="#CC000000"
         android:visibility="gone"
         android:clickable="true"
-        android:focusable="true"
-        android:background="@android:color/transparent">
+        android:focusable="true">
 
         <ScrollView
-            android:id="@+id/truthTablePanelScroll"
-            android:layout_width="360dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="start|center_vertical"
-            android:layout_marginStart="20dp"
-            android:layout_marginTop="40dp"
-            android:layout_marginBottom="40dp"
-            android:fillViewport="true"
-            android:scrollbars="vertical">
-
-        <LinearLayout
-            android:id="@+id/truthTablePanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:background="@drawable/truth_table_panel_bg">
+            android:layout_gravity="center"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:clickable="false"
+            android:focusable="false">
 
-            <TextView
-                android:id="@+id/txtTruthTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Truth Table"
-                android:textColor="#00FFFF"
-                android:textStyle="bold"
-                android:textSize="18sp" />
-
-            <HorizontalScrollView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:fillViewport="true"
-                android:scrollbars="none">
+                android:gravity="center"
+                android:padding="24dp">
 
-                <TextView
-                    android:id="@+id/txtTruthContent"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:id="@+id/tutorialPanel"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="#FFFFFF"
-                    android:textSize="15sp"
-                    android:typeface="monospace" />
-            </HorizontalScrollView>
-        </LinearLayout>
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:background="@drawable/tutorial_panel_bg"
+                    android:elevation="4dp"
+                    android:maxWidth="480dp"
+                    android:gravity="start">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="12dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="ARCUIT Guide"
+                            android:textColor="#00FFFF"
+                            android:textStyle="bold"
+                            android:textSize="22sp"
+                            android:fontFamily="sans-serif-medium" />
+
+                        <ImageView
+                            android:id="@+id/btnCloseTutorial"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:src="@android:drawable/ic_menu_close_clear_cancel"
+                            app:tint="#FFFFFF"
+                            android:padding="4dp"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp"
+                        android:lineSpacingExtra="6dp"
+                        android:text="• Use Flash if lighting is poor\n• Click Detect to analyze the circuit\n• Click Check to see IC logic diagram\n• Select IC type when prompted and click again to remove\n• Click Truth Table to see truth table" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#33FFFFFF"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="16dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="IC Pin Connection Indicators"
+                        android:textColor="#00FFFF"
+                        android:textStyle="bold"
+                        android:textSize="16sp"
+                        android:layout_marginBottom="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="10dp">
+
+                        <View
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:background="@drawable/dot_green"
+                            android:layout_marginEnd="12dp"/>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Complete input with valid output connection"
+                            android:textColor="#FFFFFF"
+                            android:textSize="13sp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="10dp">
+
+                        <View
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:background="@drawable/dot_yellow"
+                            android:layout_marginEnd="12dp"/>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Complete input but no output connection"
+                            android:textColor="#FFFFFF"
+                            android:textSize="13sp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <View
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:background="@drawable/dot_red"
+                            android:layout_marginEnd="12dp"/>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Missing input and output connection"
+                            android:textColor="#FFFFFF"
+                            android:textSize="13sp"/>
+                    </LinearLayout>
+
+                </LinearLayout>
+            </LinearLayout>
         </ScrollView>
     </FrameLayout>
-
-    <!-- Floating buttons at the far right -->
-    <ScrollView
-        android:id="@+id/buttonPanelScroll"
-        android:layout_width="96dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end"
-        android:fillViewport="true"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:id="@+id/buttonPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:padding="10dp"
-            android:background="@android:color/transparent">
-
-        <!-- Torch -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:layout_marginBottom="20dp">
-
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/btnTorch"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:src="@drawable/ic_flash_off"
-                android:tint="#FFFFFF"
-                android:contentDescription="Toggle Flash"
-                app:fabCustomSize="64dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Flash"
-                android:textColor="#00FFCC"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- Truth Table -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:layout_marginBottom="20dp">
-
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/btnTruthTable"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:src="@drawable/ic_table"
-                android:tint="#FFFFFF"
-                android:contentDescription="Truth Table"
-                app:fabCustomSize="64dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Truth"
-                android:textColor="#00FFCC"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- Circuit -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:layout_marginBottom="20dp">
-
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/btnCircuit"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:src="@drawable/ic_circuit"
-                android:tint="#00FFCC"
-                android:contentDescription="Circuit Diagram Layer"
-                app:fabCustomSize="64dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Circuit"
-                android:textColor="#00FFCC"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- Detect -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:layout_marginBottom="20dp">
-
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
-                android:id="@+id/btnDetection"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:src="@drawable/ic_detection"
-                android:tint="#00FFCC"
-                android:contentDescription="Detection Layer"
-                app:fabCustomSize="64dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Detect"
-                android:textColor="#00FFCC"
-                android:textSize="12sp" />
-        </LinearLayout>
-        </LinearLayout>
-    </ScrollView>
 
 </FrameLayout>

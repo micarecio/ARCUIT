@@ -3,16 +3,21 @@ package com.sd.arcuit.logic
 object BreadboardRules {
 
     /**
-     * Returns true if two objects are electrically connected
-     * based on spatial proximity and breadboard topology.
+     * Determines whether two detected objects are electrically connected.
+     *
+     * Connection is based on:
+     * - being in the same breadboard row
+     * - or physically touching within tolerance
      */
     fun areConnected(a: DetectedObject, b: DetectedObject): Boolean {
         return sameRow(a, b) || touching(a, b)
     }
 
     /**
-     * A–E are connected, F–J are connected.
-     * The gap breaks connectivity.
+     * Checks if two objects are on the same breadboard row.
+     *
+     * Assumes that components aligned vertically within a small
+     * tolerance belong to the same electrical row.
      */
     private fun sameRow(a: DetectedObject, b: DetectedObject): Boolean {
         val rowTolerance = 15f
@@ -24,9 +29,12 @@ object BreadboardRules {
     }
 
     /**
-     * For cases like:
-     * wire touching IC pin
-     * wire touching LED leg
+     * Checks if two objects are physically touching or overlapping.
+     *
+     * Used for detecting direct connections such as:
+     * - wire to IC pin
+     * - wire to LED leg
+     * - component-to-component contact
      */
     private fun touching(a: DetectedObject, b: DetectedObject): Boolean {
         val tolerance = 20f
